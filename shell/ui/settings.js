@@ -12,11 +12,11 @@ const isWindows = /Win/.test(navigator.platform);
 const $ = (id) => document.getElementById(id);
 
 const notes = {
-  gnome: "DigUp added it to GNOME's keyboard shortcuts. To change it: Settings → Keyboard → View and Customize " +
-    "Shortcuts → Custom Shortcuts.",
-  kde: "DigUp added it to KDE's shortcuts. To change it: System Settings → Shortcuts → DigUp.",
-  by_hand: "This desktop doesn't let apps set their own shortcuts. To open the panel with one, add a shortcut in its " +
-    "keyboard settings that runs:",
+  gnome: t("DigUp added it to GNOME's keyboard shortcuts. To change it: Settings → Keyboard → View and Customize ") +
+    t("Shortcuts → Custom Shortcuts."),
+  kde: t("DigUp added it to KDE's shortcuts. To change it: System Settings → Shortcuts → DigUp."),
+  by_hand: t("This desktop doesn't let apps set their own shortcuts. To open the panel with one, add a shortcut in its ") +
+    t("keyboard settings that runs:"),
 };
 
 let info = {};
@@ -55,22 +55,21 @@ function renderGeneral() {
   $("shortcut-command").hidden = info.shortcut.method !== "by_hand";
   $("shortcut-command").textContent = info.shortcut.command;
   $("change-shortcut").hidden = info.shortcut.method !== "grab" || recording;
-  $("recording").hidden = !recording;
+  $(t("recording")).hidden = !recording;
   renderUpdates();
 }
 
 /// Updates: the daily check, and this version or the one waiting (updates.rs).
 function renderUpdates() {
-  $("update-checks").checked = info.updateChecks;
-  $("update-info").textContent = "Once a day DigUp asks GitHub for its newest version; nothing about your files is sent. "
-    + (info.installsUpdates ? "Updates install with one click."
-      : "A new version is downloaded from its release page and installed as this one was.");
+  $("update-checks").checked = false;
+  $("update-info").textContent = t("Chinese fork: updates are downloaded manually from this fork’s releases.");
+  $("check-now").textContent = t("Open Fork Releases");
   const update = info.state && info.state.update;
   const version = $("update-version");
   version.classList.toggle("available", Boolean(update));
   version.textContent = !update ? `DigUp ${info.version}`
-    : update.state === "downloading" ? `Downloading DigUp ${update.version}…` + (update.percent != null ? ` ${update.percent}%` : "")
-    : update.state === "installing" ? `Installing DigUp ${update.version}…` : `DigUp ${update.version} is available`;
+    : update.state === "downloading" ? t("Downloading DigUp {0}…", update.version) + (update.percent != null ? ` ${update.percent}%` : "")
+    : update.state === "installing" ? t("Installing DigUp {0}…", update.version) : t("DigUp {0} is available", update.version);
 }
 
 $("licenses").onclick = () => invoke("open_licenses").catch(fail);
@@ -121,7 +120,7 @@ $("change-shortcut").onclick = () => {
   recording = true;
   $("problem").hidden = true;
   renderGeneral();
-  recordShortcut((text) => { $("recording").textContent = text; }, (shown, problem) => {
+  recordShortcut((text) => { $(t("recording")).textContent = text; }, (shown, problem) => {
     recording = false;
     if (shown) info.hotkey = shown;
     if (problem) fail(problem);
@@ -137,12 +136,12 @@ function renderStatus() {
   $("status-line").textContent = state.line || "";
   $("status-bar").hidden = state.progress == null;
   $("status-fill").style.width = `${Math.round(100 * (state.progress || 0))}%`;
-  const parts = [`${(state.searchable || 0).toLocaleString()} of ${(state.files || 0).toLocaleString()} files searchable`];
-  if (state.pending) parts.push(`${state.pending.toLocaleString()} waiting`);
-  if (state.unfinished) parts.push(`${state.unfinished.toLocaleString()} long ${state.unfinished === 1 ? "file" : "files"} to finish`);
+  const parts = [t("{0} of {1} files searchable", (state.searchable || 0).toLocaleString(), (state.files || 0).toLocaleString())];
+  if (state.pending) parts.push(t("{0} waiting", state.pending.toLocaleString()));
+  if (state.unfinished) parts.push(t("{0} long {1} to finish", state.unfinished.toLocaleString(), state.unfinished === 1 ? t("file") : t("files")));
   $("status-detail").textContent = parts.join(" · ");
   $("pause").hidden = !info.folders?.length;
-  $("pause").textContent = state.paused ? "Resume" : "Pause";
+  $("pause").textContent = state.paused ? t("Resume") : t("Pause");
 }
 
 $("pause").onclick = () => invoke("pause_indexing", { paused: !(info.state || {}).paused }).catch(fail);
@@ -159,7 +158,7 @@ async function loadSummaries() {
 function renderFolders() {
   const rows = $("folder-rows");
   rows.replaceChildren();
-  if (!info.folders?.length) rows.append(element("div", "empty", "No folders yet. Add the ones DigUp should search."));
+  if (!info.folders?.length) rows.append(element("div", "empty", t("No folders yet. Add the ones DigUp should search.")));
   for (const folder of info.folders || []) {
     const summary = (summaries || []).find((item) => samePath(item.path, folder)) || null;
     rows.append(folderRow(folder, summary));
@@ -168,13 +167,13 @@ function renderFolders() {
   const skipped = $("skipped-rows");
   skipped.replaceChildren();
   if (!info.skipped?.length) {
-    skipped.append(element("div", "empty", "None. Code projects, app bundles and caches are skipped anyway."));
+    skipped.append(element("div", "empty", t("None. Code projects, app bundles and caches are skipped anyway.")));
   }
   for (const folder of info.skipped || []) {
     const row = element("div", "row");
     const text = element("div", "text");
     text.append(element("div", "path", shown(folder)));
-    row.append(text, removeButton("Search this folder again", () => {
+    row.append(text, removeButton(t("Search this folder again"), () => {
       setSkipped(info.skipped.filter((path) => path !== folder));
     }));
     skipped.append(row);
@@ -217,23 +216,23 @@ function folderRow(folder, summary, code = false) {
   const row = element("div", "row");
   const text = element("div", "text");
   const name = element("div", "name", nameOf(folder));
-  if (summary?.missing || summary?.unreadable) name.append(element("span", "flag", summary.missing ? "Not connected" : "No access"));
+  if (summary?.missing || summary?.unreadable) name.append(element("span", "flag", summary.missing ? t("Not connected") : t("No access")));
   text.append(name, element("div", "path", shown(folder)));
   if (summary && Object.keys(summary.kinds || {}).length) text.append(element("div", "counts", countsText(summary.kinds)));
   const side = element("div", "side");
   if (summary) {
-    side.append(element("div", "indexed", summary.missing || summary.unreadable ? "Kept for when it's back"
-      : `${summary.indexed.toLocaleString()} of ${summary.files.toLocaleString()} indexed`));
+    side.append(element("div", "indexed", summary.missing || summary.unreadable ? t("Kept for when it's back")
+      : t("{0} of {1} indexed", summary.indexed.toLocaleString(), summary.files.toLocaleString())));
     // What the last sync never queued from this folder, by reason (the helper's left_out, through the status).
     const leftOutKey = Object.keys((info.state || {}).leftOut || {}).find((path) => samePath(path, folder));
     const leftOut = code || !leftOutKey ? {} : info.state.leftOut[leftOutKey];
     const notRead = Object.values(leftOut).reduce((sum, count) => sum + count, 0);
     const states = [
-      summary.pending ? `${summary.pending.toLocaleString()} waiting` : null,
-      summary.unfinished ? `${summary.unfinished.toLocaleString()} long ${summary.unfinished === 1 ? "file" : "files"} to finish` : null,
-      summary.skipped ? `${summary.skipped.toLocaleString()} skipped` : null,
-      summary.failed ? `${summary.failed.toLocaleString()} couldn't be read` : null,
-      notRead ? `${notRead.toLocaleString()} not read` : null,
+      summary.pending ? t("{0} waiting", summary.pending.toLocaleString()) : null,
+      summary.unfinished ? t("{0} long {1} to finish", summary.unfinished.toLocaleString(), summary.unfinished === 1 ? t("file") : t("files")) : null,
+      summary.skipped ? t("{0} skipped", summary.skipped.toLocaleString()) : null,
+      summary.failed ? t("{0} couldn't be read", summary.failed.toLocaleString()) : null,
+      notRead ? t("{0} not read", notRead.toLocaleString()) : null,
     ].filter(Boolean).join(" · ");
     if (states) {
       const line = element("div", "states", states);
@@ -251,7 +250,7 @@ function folderRow(folder, summary, code = false) {
       side.append(line);
     }
   }
-  row.append(text, side, removeButton(code ? "Stop searching the code in this folder" : "Stop searching this folder", () => {
+  row.append(text, side, removeButton(code ? t("Stop searching the code in this folder") : t("Stop searching this folder"), () => {
     if (code) {
       removingCode = folder;
       renderCode();
@@ -266,19 +265,19 @@ function folderRow(folder, summary, code = false) {
 /// "Stop searching “Pictures”?", in place, as the Mac app asks.
 function confirmRemoval(folder, summary, code = false) {
   const box = element("div", "confirm");
-  const files = summary ? `Its ${summary.files.toLocaleString()} ${summary.files === 1 ? "file leaves" : "files leave"}` : "Its files leave";
+  const files = summary ? t("Its {0} {1}", summary.files.toLocaleString(), summary.files === 1 ? t("file leaves") : t("files leave")) : t("Its files leave");
   const last = code && (info.code?.folders || []).length === 1;
   box.append(element("p", "", code
-    ? `Stop searching the code in “${nameOf(folder)}”? ${files} the code index.${last ? " That turns code search off." : ""}`
-    : `Stop searching “${nameOf(folder)}”? ${files} the index. Adding it back later indexes them again.`));
+    ? t("Stop searching the code in “{0}”? {1} the code index.{2}", nameOf(folder), files, last ? t(" That turns code search off.") : "")
+    : t("Stop searching “{0}”? {1} the index. Adding it back later indexes them again.", nameOf(folder), files)));
   const actions = element("div", "actions");
-  const cancel = element("button", "", "Cancel");
+  const cancel = element("button", "", t("Cancel"));
   cancel.onclick = () => {
     removing = removingCode = null;
     renderFolders();
     renderCode();
   };
-  const remove = element("button", "danger", "Remove");
+  const remove = element("button", "danger", t("Remove"));
   remove.onclick = async () => {
     removing = removingCode = null;
     try {
@@ -368,23 +367,23 @@ function renderCode() {
   }
   $("code-status").hidden = !on || codeSummaries == null;
   $("code-status-line").textContent = total.pending
-    ? `Reading code: ${total.indexed.toLocaleString()} of ${total.files.toLocaleString()} files`
-    : `${total.indexed.toLocaleString()} ${total.indexed === 1 ? "file" : "files"} of code searchable`;
+    ? t("Reading code: {0} of {1} files", total.indexed.toLocaleString(), total.files.toLocaleString())
+    : t("{0} {1} of code searchable", total.indexed.toLocaleString(), total.indexed === 1 ? t("file") : t("files"));
   const size = info.storage?.codeBytes;
-  $("code-status-detail").textContent = size ? `The code index takes ${bytes(size)}` : "";
+  $("code-status-detail").textContent = size ? t("The code index takes {0}", bytes(size)) : "";
 
   const rows = $("code-rows");
   rows.replaceChildren();
-  if (!on) rows.append(element("div", "empty", "Code search is off. Choose the folders that hold your code to turn it on."));
+  if (!on) rows.append(element("div", "empty", t("Code search is off. Choose the folders that hold your code to turn it on.")));
   for (const folder of code.folders) {
     const summary = (codeSummaries || []).find((item) => samePath(item.path, folder)) || null;
     rows.append(folderRow(folder, summary, true));
     if (removingCode && samePath(removingCode, folder)) rows.append(confirmRemoval(folder, summary, true));
   }
-  $("add-code").textContent = on ? "Add Folders…" : "Choose Code Folders…";
+  $("add-code").textContent = on ? t("Add Folders…") : t("Choose Code Folders…");
 
   const select = $("code-editor");
-  const options = [...code.editors, { id: "default", name: "The file's default app" }];
+  const options = [...code.editors, { id: "default", name: t("The file's default app") }];
   select.replaceChildren(...options.map((editor) => {
     const option = element("option", "", editor.name);
     option.value = editor.id;
@@ -405,8 +404,8 @@ $("code-editor").addEventListener("change", async () => {
 });
 $("code-off").onclick = () => {
   const size = info.storage?.codeBytes;
-  $("code-off-text").textContent = "Turn off code search? Its index" + (size ? ` (${bytes(size)})` : "")
-    + " is deleted, and turning it on again reads the code again.";
+  $("code-off-text").textContent = t("Turn off code search? Its index") + (size ? ` (${bytes(size)})` : "")
+    + t(" is deleted, and turning it on again reads the code again.");
   $("code-off-confirm").hidden = false;
   $("code-off").hidden = true;
 };
@@ -428,11 +427,11 @@ $("code-off-go").onclick = async () => {
 
 function renderStorage() {
   const storage = info.storage || {}, model = (info.state || {}).model || {};
-  const states = { ready: "Downloaded", checking: "Checking…", waiting: "Waiting for the network", failed: "The download stopped" };
+  const states = { ready: t("Downloaded"), checking: t("Checking…"), waiting: t("Waiting for the network"), failed: t("The download stopped") };
   $("model-status").textContent = model.state === "downloading"
-    ? `Downloading · ${model.total ? Math.floor((100 * model.bytes) / model.total) : 0}%` : states[model.state] || "";
+    ? t("Downloading · {0}%", model.total ? Math.floor((100 * model.bytes) / model.total) : 0) : states[model.state] || "";
   pathButton($("model-path"), storage.models);
-  $("index-size").textContent = bytes(storage.indexBytes || 0) + (storage.codeBytes ? ` (code ${bytes(storage.codeBytes)})` : "");
+  $("index-size").textContent = bytes(storage.indexBytes || 0) + (storage.codeBytes ? t(" (code {0})", bytes(storage.codeBytes)) : "");
   pathButton($("index-path"), storage.index);
   $("version").textContent = `DigUp ${info.version || ""} · EmbeddingGemma 2 by Google (Apache 2.0), run by llama.cpp (MIT).`;
   $("licenses").hidden = !info.licenses;
@@ -445,7 +444,7 @@ function pathButton(button, path) {
   const inner = document.createElement("bdi");
   inner.textContent = shown(path);
   button.append(inner);
-  button.title = isWindows ? "Show in Explorer" : "Show in Files";
+  button.title = isWindows ? t("Show in Explorer") : t("Show in Files");
   button.onclick = () => invoke("reveal", { path }).catch(fail);
 }
 
@@ -454,12 +453,12 @@ function pathButton(button, path) {
 function countsText(kinds) {
   const part = (count, one, many) => (count > 0 ? `${count.toLocaleString()} ${count === 1 ? one : many}` : null);
   return [
-    part((kinds.image || 0) + (kinds.screenshot || 0), "picture", "pictures"),
-    part(kinds.pdf, "PDF", "PDFs"),
-    part(kinds.doc, "document", "documents"),
-    part(kinds.audio, "recording", "recordings"),
-    part(kinds.video, "video", "videos"),
-    part(kinds.code, "file of code", "files of code"),
+    part((kinds.image || 0) + (kinds.screenshot || 0), t("picture"), t("pictures")),
+    part(kinds.pdf, "PDF", t("PDFs")),
+    part(kinds.doc, t("document"), t("documents")),
+    part(kinds.audio, t("recording"), t("recordings")),
+    part(kinds.video, t("video"), t("videos")),
+    part(kinds.code, t("file of code"), t("files of code")),
   ].filter(Boolean).join(" · ");
 }
 

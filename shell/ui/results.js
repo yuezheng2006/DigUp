@@ -12,13 +12,13 @@ const isMac = /Mac/.test(navigator.platform);
 const isWindows = /Win/.test(navigator.platform);
 const isLinux = /Linux/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
-const FILE_MANAGER = isMac ? "Finder" : isWindows ? "Explorer" : "Files";
+const FILE_MANAGER = isMac ? t("Finder") : isWindows ? t("Explorer") : t("Files");
 // Pictures every web view shows as they are; anything else (HEIC, TIFF, RAW…) comes as JPEG from the helper.
 const SHOWN_AS_IS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp"]);
-const GROUP_OF = { screenshot: "Screenshots", image: "Images", pdf: "Documents", doc: "Documents", video: "Video",
-                   audio: "Audio", code: "Code" };
-const KIND_TITLE = { screenshot: "Screenshot", image: "Image", pdf: "PDF", doc: "Document", audio: "Audio",
-                     video: "Video", code: "Code" };
+const GROUP_OF = { screenshot: t("Screenshots"), image: t("Images"), pdf: t("Documents"), doc: t("Documents"), video: t("Video"),
+                   audio: t("Audio"), code: t("Code") };
+const KIND_TITLE = { screenshot: t("Screenshot"), image: t("Image"), pdf: "PDF", doc: t("Document"), audio: t("Audio"),
+                     video: t("Video"), code: t("Code") };
 
 /// The home folder, for "~/Pictures" (filled in as the page starts).
 let homeFolder = "";
@@ -29,7 +29,7 @@ function placeOf(hit) {
   if (hit.loc == null) return null;
   switch (hit.segment) {
     case "page":
-    case "page_image": return `p. ${Math.trunc(hit.loc)}`;
+    case "page_image": return t("p. {0}", Math.trunc(hit.loc));
     case "frame": return clock(hit.loc);
     case "audio": return hit.kind === "video" ? `♪ ${clock(hit.loc)}` : clock(hit.loc);
     case "lines": {
@@ -84,8 +84,9 @@ function codeLine(hit) {
 function span(hit) {
   if (hit.loc == null) return null;
   const first = Math.trunc(hit.loc), last = Math.trunc(hit.loc_end ?? hit.loc);
-  const what = hit.segment === "cells" ? ["cell", "cells"] : ["line", "lines"];
-  return first === last ? `${what[0]} ${first}` : `${what[1]} ${first}–${last}`;
+  const cell = hit.segment === "cells";
+  return first === last ? t(cell ? "cell {0}" : "line {0}", first)
+    : t(cell ? "cells {0}–{1}" : "lines {0}–{1}", first, last);
 }
 
 /// It matched by meaning (not only its words or name).
@@ -96,34 +97,34 @@ function matchedMeaning(hit) {
 /// Why it's here, in a few words: "Matches the picture", "Matches the frame at 0:06".
 function reasonOf(hit) {
   const words = hit.keyword_rank != null;
-  if (!matchedMeaning(hit)) return words ? "Has your words" : "Matches its name";
+  if (!matchedMeaning(hit)) return words ? t("Has your words") : t("Matches its name");
   const at = hit.loc != null ? clock(hit.loc) : "";
-  const page = hit.loc != null ? `page ${Math.trunc(hit.loc)}` : "a page";
+  const page = hit.loc != null ? t("page {0}", Math.trunc(hit.loc)) : t("a page");
   switch (hit.segment) {
-    case "image": return hit.kind === "screenshot" ? "Matches what's on screen" : "Matches the picture";
-    case "ocr": return "Matches the text in it";
-    case "frame": return `Matches the frame at ${at}`;
-    case "audio": return hit.kind === "video" ? `Matches the sound at ${at}` : `Matches what's heard at ${at}`;
-    case "page": return `Matches the text on ${page}`;
-    case "page_image": return `Matches ${page}`;
-    case "chunk": return "Matches its text";
+    case "image": return hit.kind === "screenshot" ? t("Matches what's on screen") : t("Matches the picture");
+    case "ocr": return t("Matches the text in it");
+    case "frame": return t("Matches the frame at {0}", at);
+    case "audio": return hit.kind === "video" ? t("Matches the sound at {0}", at) : t("Matches what's heard at {0}", at);
+    case "page": return t("Matches the text on {0}", page);
+    case "page_image": return t("Matches {0}", page);
+    case "chunk": return t("Matches its text");
     case "lines":
-    case "cells": return `Matches ${span(hit) ?? "the code"}`;
-    default: return "Matches its name";
+    case "cells": return t("Matches {0}", span(hit) ?? t("the code"));
+    default: return t("Matches its name");
   }
 }
 
 /// "Screenshot · Oct 7, 2026 · 1440 × 900 · 62 KB", "PDF · … · 463 pages, 120 read so far · 23 MB"
 function details(hit) {
   const info = hit.info || {};
-  const parts = [KIND_TITLE[hit.kind] || "File", dateOf(hit.modified)];
+  const parts = [KIND_TITLE[hit.kind] || t("File"), dateOf(hit.modified)];
   if (info.width && info.height) parts.push(`${info.width} × ${info.height}`);
   const readTo = info.read_to != null ? Number(info.read_to) : null;
   if (info.pages) {
     const pages = Number(info.pages);
-    parts.push((pages === 1 ? "1 page" : `${pages.toLocaleString()} pages`) + (readTo != null ? `, ${readTo} read so far` : ""));
-  } else if (readTo != null) parts.push("partly read so far");
-  if (info.lines) parts.push(Number(info.lines) === 1 ? "1 line" : `${Number(info.lines).toLocaleString()} lines`);
+    parts.push((pages === 1 ? t("1 page") : t("{0} pages", pages.toLocaleString())) + (readTo != null ? t(", {0} read so far", readTo) : ""));
+  } else if (readTo != null) parts.push(t("partly read so far"));
+  if (info.lines) parts.push(Number(info.lines) === 1 ? t("1 line") : t("{0} lines", Number(info.lines).toLocaleString()));
   if (info.duration) parts.push(clock(Number(info.duration)));
   if (hit.size > 0) parts.push(bytes(hit.size));
   return parts.join(" · ");
