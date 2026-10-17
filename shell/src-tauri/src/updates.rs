@@ -17,6 +17,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
+fn manual_fork_updates() -> bool { true }
+
 const DAY: u64 = 24 * 60 * 60;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -108,6 +110,8 @@ fn log(shell: &Shell, line: &str) {
 /// the last check. Not in dev runs or debug builds (they'd read the real feed), unless `--debug-update-check` asks for
 /// one check at once (then `--debug-update-install` takes what it finds without asking).
 pub fn start(app: &AppHandle) {
+    // This fork has no independently signed update feed yet.
+    if manual_fork_updates() { return; }
     let shell = app.state::<Arc<Shell>>().inner().clone();
     log(&shell, &format!("DigUp {} started", app.package_info().version));
     let debug = shell.options.debug_update_check;
@@ -136,6 +140,10 @@ pub fn start(app: &AppHandle) {
 /// Reads the feed. `asked`: the person chose Check for Updates…, and hears the answer (an update is then offered at
 /// once); a daily check stays quiet and lets an update wait.
 pub async fn check(app: &AppHandle, asked: bool) {
+    if manual_fork_updates() {
+        if asked { let _ = app.opener().open_url("https://github.com/yuezheng2006/DigUp/releases", None::<&str>); }
+        return;
+    }
     let shell = app.state::<Arc<Shell>>().inner().clone();
     {
         let mut phase = shell.updates.phase.lock().unwrap();

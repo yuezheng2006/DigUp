@@ -202,7 +202,7 @@ final class AppController {
     }
 
     /// Asks for folders with the standard open panel (as a sheet when there's a window).
-    func pickFolders(for window: NSWindow?, prompt: String = "Add", then done: @escaping ([URL]) -> Void) {
+    func pickFolders(for window: NSWindow?, prompt: String = L("Add"), then done: @escaping ([URL]) -> Void) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

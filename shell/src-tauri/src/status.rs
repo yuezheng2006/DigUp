@@ -1,6 +1,14 @@
 //! What DigUp is doing, in the words the tray, the window and the panel use: the index helper's events and the model's
 //! download turned into one line, a progress and a caveat for results (the Mac app's AppModel and EngineStatus).
 
+use crate::i18n::{tr, is_chinese};
+
+macro_rules! local_format {
+    ($en:literal, $zh:literal $(, $arg:expr)* $(,)?) => {
+        if is_chinese() { format!($zh $(, $arg)*) } else { format!($en $(, $arg)*) }
+    };
+}
+
 use serde_json::{json, Value};
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -74,7 +82,7 @@ impl Status {
                 self.missing = paths("folders");
                 self.unreadable = paths("unreadable");
             }
-            "error" if event["fatal"] == true => self.activity = Activity::Failed("Indexing stopped".into()),
+            "error" if event["fatal"] == true => self.activity = Activity::Failed(tr("Indexing stopped", "索引已停止").into()),
             // The helper is gone: whatever it was doing is over.
             "exit" | "ended" => {
                 if matches!(self.activity, Activity::Starting | Activity::Indexing { .. } | Activity::Finishing { .. }) {
@@ -88,7 +96,7 @@ impl Status {
     /// One line for the tray and the window: "Indexing 42% · 120 of 306", "306 files indexed".
     pub fn line(&self, has_folders: bool, model: &Value) -> String {
         if !has_folders {
-            return "No folders chosen yet".into();
+            return tr("No folders chosen yet", "尚未选择文件夹").into();
         }
         if let Activity::Failed(problem) = &self.activity {
             return format!("⚠︎ {problem}");
@@ -98,29 +106,29 @@ impl Status {
             return line;
         }
         if self.measuring {
-            return "Checking this computer's speed…".into();
+            return tr("Checking this computer's speed…", "正在测试本机性能…").into();
         }
         match self.activity {
             // Held or paused, no index helper runs to say it has started: what's indexed stands.
-            Activity::Starting if !self.paused && self.held_until.is_none() => "Starting…".into(),
-            Activity::Indexing { done, total } => format!("Indexing {}% · {} of {}", percent(done, total), number(done), number(total)),
+            Activity::Starting if !self.paused && self.held_until.is_none() => tr("Starting…", "正在启动…").into(),
+            Activity::Indexing { done, total } => local_format!("Indexing {}% · {} of {}", "正在索引 {}% · {} / {}", percent(done, total), number(done), number(total)),
             Activity::Finishing { done, total, files } => {
-                let which = if files > 0 { format!("{} long {}", number(files), plural(files, "file", "files")) } else { "long files".into() };
-                format!("Reading the rest of {which} · {}%", percent(done, total))
+                let which = if files > 0 { local_format!("{} long {}", "{} 个长{}", number(files), plural(files, "file", "files")) } else { tr("long files", "长文件").into() };
+                local_format!("Reading the rest of {which} · {}%", "正在读取 {which} 的剩余内容 · {}%", percent(done, total))
             }
             _ if self.pending > 0 => {
-                let waiting = format!("{} {} waiting", number(self.pending), plural(self.pending, "file", "files"));
+                let waiting = local_format!("{} {} waiting", "{} 个{}等待中", number(self.pending), plural(self.pending, "file", "files"));
                 match &self.held_until {
-                    _ if self.paused => format!("Paused · {waiting}"),
-                    Some(start) => format!("{waiting} · indexing from {start}"),
-                    None => format!("{waiting} to be indexed"),
+                    _ if self.paused => local_format!("Paused · {waiting}", "已暂停 · {waiting}"),
+                    Some(start) => local_format!("{waiting} · indexing from {start}", "{waiting} · 从 {start} 开始索引"),
+                    None => local_format!("{waiting} to be indexed", "{waiting}，待建立索引"),
                 }
             }
             _ => {
-                let indexed = format!("{} {} indexed", number(self.searchable), plural(self.searchable, "file", "files"));
+                let indexed = local_format!("{} {} indexed", "已索引 {} 个{}", number(self.searchable), plural(self.searchable, "file", "files"));
                 match &self.held_until {
-                    _ if self.paused => format!("{indexed} · paused"),
-                    Some(start) => format!("{indexed} · indexing from {start}"),
+                    _ if self.paused => local_format!("{indexed} · paused", "{indexed} · 已暂停"),
+                    Some(start) => local_format!("{indexed} · indexing from {start}", "{indexed} · 从 {start} 开始索引"),
                     None => indexed,
                 }
             }
@@ -130,13 +138,13 @@ impl Status {
     /// A few words beside the panel's field while results may be incomplete: "Indexing 42%", "Downloading model · 42%".
     pub fn badge(&self, model: &Value) -> Option<String> {
         if model["state"] == "downloading" {
-            return Some(format!("Downloading model · {}%", (fraction(model) * 100.0) as u64));
+            return Some(local_format!("Downloading model · {}%", "正在下载模型 · {}%", (fraction(model) * 100.0) as u64));
         }
         if self.paused && self.pending > 0 {
-            return Some("Indexing paused".into());
+            return Some(tr("Indexing paused", "索引已暂停").into());
         }
         match self.activity {
-            Activity::Indexing { done, total } if total > 0 => Some(format!("Indexing {}%", percent(done, total))),
+            Activity::Indexing { done, total } if total > 0 => Some(local_format!("Indexing {}%", "正在索引 {}%", percent(done, total))),
             _ => None,
         }
     }
@@ -164,18 +172,18 @@ impl Status {
     pub fn caveat(&self, model: &Value) -> Option<String> {
         match model["state"].as_str() {
             Some("downloading") => {
-                return Some(format!("Matching words only until the model has downloaded ({}%)", (fraction(model) * 100.0) as u64))
+                return Some(local_format!("Matching words only until the model has downloaded ({}%)", "模型下载完成前仅匹配文字（{}%）", (fraction(model) * 100.0) as u64))
             }
-            Some("waiting" | "failed") => return Some("Matching words only: the model isn't downloaded".into()),
+            Some("waiting" | "failed") => return Some(tr("Matching words only: the model isn't downloaded", "仅匹配文字：尚未下载模型").into()),
             _ => {}
         }
         if let Activity::Indexing { done, total } = self.activity {
             if total > 0 {
-                return Some(format!("Still indexing ({}%): some files aren't in yet", percent(done, total)));
+                return Some(local_format!("Still indexing ({}%): some files aren't in yet", "仍在索引（{}%）：部分文件尚未加入", percent(done, total)));
             }
         }
         (self.pending > 0).then(|| {
-            format!("{} {} indexed yet", number(self.pending), plural(self.pending, "file isn't", "files aren't"))
+            local_format!("{} {} indexed yet", "{} 个{}索引", number(self.pending), plural(self.pending, "file isn't", "files aren't"))
         })
     }
 
@@ -214,10 +222,10 @@ impl Status {
 /// While the model isn't there, how its download goes.
 fn download_line(model: &Value) -> Option<String> {
     match model["state"].as_str()? {
-        "downloading" => Some(format!("Downloading the model · {}%", (fraction(model) * 100.0) as u64)),
-        "checking" => Some("Checking the model download…".into()),
-        "waiting" => Some("Model download: waiting for the network".into()),
-        "failed" => Some("⚠︎ The model download stopped".into()),
+        "downloading" => Some(local_format!("Downloading the model · {}%", "正在下载模型 · {}%", (fraction(model) * 100.0) as u64)),
+        "checking" => Some(tr("Checking the model download…", "正在校验模型文件…").into()),
+        "waiting" => Some(tr("Model download: waiting for the network", "模型下载：等待网络").into()),
+        "failed" => Some(tr("⚠︎ The model download stopped", "⚠︎ 模型下载已停止").into()),
         _ => None,
     }
 }
@@ -233,6 +241,9 @@ fn percent(done: u64, total: u64) -> u64 {
 }
 
 fn plural(count: u64, one: &'static str, many: &'static str) -> &'static str {
+    if is_chinese() {
+        match one { "file" => return "文件", "file isn't" => return "文件尚未", _ => {} }
+    }
     if count == 1 { one } else { many }
 }
 
@@ -257,34 +268,34 @@ mod tests {
     fn lines() {
         let ready = json!({"state": "ready"});
         let mut status = Status::default();
-        assert_eq!(status.line(false, &ready), "No folders chosen yet");
-        assert_eq!(status.line(true, &ready), "Starting…");
+        assert_eq!(status.line(false, &ready), tr("No folders chosen yet", "尚未选择文件夹"));
+        assert_eq!(status.line(true, &ready), tr("Starting…", "正在启动…"));
         assert_eq!(status.line(true, &json!({"state": "downloading", "bytes": 432.0, "total": 865.0})),
-                   "Downloading the model · 49%");
+                   tr("Downloading the model · 49%", "正在下载模型 · 49%"));
         status.apply(&json!({"event": "sync", "new": 306, "files": 306, "searchable": 0, "pending": 306}));
-        assert_eq!(status.line(true, &ready), "Indexing 0% · 0 of 306");
+        assert_eq!(status.line(true, &ready), tr("Indexing 0% · 0 of 306", "正在索引 0% · 0 / 306"));
         status.apply(&json!({"event": "file", "done": 129, "total": 306}));
-        assert_eq!(status.line(true, &ready), "Indexing 42% · 129 of 306");
+        assert_eq!(status.line(true, &ready), tr("Indexing 42% · 129 of 306", "正在索引 42% · 129 / 306"));
         assert_eq!(status.progress(&ready), Some(129.0 / 306.0));
-        assert_eq!(status.caveat(&ready).as_deref(), Some("Still indexing (42%): some files aren't in yet"));
+        assert_eq!(status.caveat(&ready).as_deref(), Some(tr("Still indexing (42%): some files aren't in yet", "仍在索引（42%）：部分文件尚未加入")));
         status.apply(&json!({"event": "file", "done": 1, "total": 1, "code": true}));
-        assert_eq!(status.line(true, &ready), "Indexing 42% · 129 of 306");
+        assert_eq!(status.line(true, &ready), tr("Indexing 42% · 129 of 306", "正在索引 42% · 129 / 306"));
         status.apply(&json!({"event": "rest", "done": 40, "total": 100, "files": 3}));
-        assert_eq!(status.line(true, &ready), "Reading the rest of 3 long files · 40%");
+        assert_eq!(status.line(true, &ready), tr("Reading the rest of 3 long files · 40%", "正在读取 3 个长文件 的剩余内容 · 40%"));
         status.apply(&json!({"event": "idle", "files": 1306, "searchable": 1306, "pending": 0, "unfinished": 0}));
-        assert_eq!(status.line(true, &ready), "1,306 files indexed");
+        assert_eq!(status.line(true, &ready), tr("1,306 files indexed", "已索引 1,306 个文件"));
         assert_eq!(status.progress(&ready), None);
         assert_eq!(status.caveat(&ready), None);
         status.apply(&json!({"event": "error", "message": "worker died", "fatal": true}));
-        assert_eq!(status.line(true, &ready), "⚠︎ Indexing stopped");
+        assert_eq!(status.line(true, &ready), tr("⚠︎ Indexing stopped", "⚠︎ 索引已停止"));
 
         let mut held = Status { held_until: Some("01:00".into()), ..Status::default() };
         held.apply(&json!({"event": "counts", "files": 70, "searchable": 66, "pending": 4, "unfinished": 0}));
-        assert_eq!(held.line(true, &ready), "4 files waiting · indexing from 01:00");
+        assert_eq!(held.line(true, &ready), tr("4 files waiting · indexing from 01:00", "4 个文件等待中 · 从 01:00 开始索引"));
         assert!(held.busy(&ready));
         held.held_until = None;
         held.paused = true;
-        assert_eq!(held.line(true, &ready), "Paused · 4 files waiting");
+        assert_eq!(held.line(true, &ready), tr("Paused · 4 files waiting", "已暂停 · 4 个文件等待中"));
     }
 
     #[test]
