@@ -5,7 +5,7 @@ import SwiftUI
 
 @Observable
 final class WeChatState {
-    var executable = AppSettings.defaults.string(forKey: "wechatExecutable") ?? ""
+    var executable = ""
     var authorized = false
     var sessions: [WeChatSession] = []
     var selection = ""
@@ -18,15 +18,14 @@ final class WeChatState {
     private var generation = UUID()
     private var cancelWork: (() -> Void)?
 
-    func chooseExecutable() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            reset()
-            executable = url.path
-            AppSettings.defaults.set(executable, forKey: "wechatExecutable")
-        }
+    var selected = false
+
+    func detectReader() {
+        reset()
+        // Launch-only override for isolated runtime tests, never a persisted user path.
+        let override = UserDefaults.standard.string(forKey: "defaultsSuite") != nil
+            ? UserDefaults.standard.string(forKey: "wechatExecutable") : nil
+        executable = override ?? WeChatReaderLocation.detect() ?? ""
     }
 
     func reset() {
@@ -101,16 +100,20 @@ final class WeChatState {
 
 struct WeChatView: View {
     @Bindable var state: WeChatState
+    private var executableStatus: String {
+        state.executable.isEmpty
+            ? L("WeChat reader not found. Install and configure wx on this Mac, then detect again.")
+            : L("Local WeChat reader detected. Your reader manages the account and data location.")
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L("WeChat Messages")).font(.title2.bold())
             Text(L("Read an authorized local account through your configured wx reader. Nothing is sent or added to the file index."))
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
-                Text(state.executable.isEmpty ? L("No reader selected") : state.executable)
-                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                Text(executableStatus).foregroundStyle(.secondary)
                 Spacer()
-                Button(L("Choose wx…")) { state.chooseExecutable() }.disabled(state.busy)
+                Button(L("Detect Again")) { state.detectReader() }.disabled(state.busy)
             }
             Toggle(L("I am authorized to read the account configured in this reader."), isOn: $state.authorized)
                 .onChange(of: state.authorized) { _, granted in if !granted { state.reset() } }
@@ -122,13 +125,13 @@ struct WeChatView: View {
                 }
                 .onChange(of: state.selection) { _, _ in state.result = nil; state.query = "" }
             }
-            .disabled(!state.authorized || state.busy)
+            .disabled(!state.authorized || state.busy || state.executable.isEmpty)
             HStack {
                 DatePicker(L("From"), selection: $state.since, displayedComponents: .date)
                 DatePicker(L("Until (exclusive)"), selection: $state.until, displayedComponents: .date)
                 Button(L("Read Messages")) { state.read() }.disabled(state.selection.isEmpty)
             }
-            .disabled(!state.authorized || state.busy)
+            .disabled(!state.authorized || state.busy || state.executable.isEmpty)
             .onChange(of: state.since) { _, _ in state.result = nil }
             .onChange(of: state.until) { _, _ in state.result = nil }
             Text(L("Local timezone: {0}. Up to 200 recent conversations and 500 messages per read; no background sync.", TimeZone.current.identifier))
@@ -168,29 +171,11 @@ struct WeChatView: View {
     }
 }
 
-final class WeChatWindowController: NSObject, NSWindowDelegate {
+/// Routes the menu shortcut to the main product window; owns no separate window.
+final class WeChatWindowController {
     private unowned let app: AppController
     let state = WeChatState()
-    private var window: NSWindow?
-    var isVisible: Bool { window?.isVisible == true }
     init(app: AppController) { self.app = app }
-    func show() {
-        if window == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: WeChatView(state: state)))
-            window.title = L("WeChat Messages")
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.isReleasedWhenClosed = false
-            window.delegate = self
-            window.center()
-            self.window = window
-        }
-        if let window { app.present(window) }
-    }
-    func snapshot(to url: URL) throws { try Snapshot.write(window, to: url) }
-
-    func windowWillClose(_ notification: Notification) {
-        state.authorized = false
-        state.reset()
-        app.windowClosed()
-    }
+    func show() { app.searchWindow.showWeChat() }
+    func snapshot(to url: URL) throws { try app.searchWindow.snapshot(to: url) }
 }

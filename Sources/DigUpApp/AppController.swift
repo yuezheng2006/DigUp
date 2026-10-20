@@ -308,7 +308,7 @@ final class AppController {
     /// A window closed: the Dock icon goes once none is left.
     func windowClosed() {
         DispatchQueue.main.async { [self] in
-            let open = [searchWindow?.isVisible, settingsWindow?.isVisible, onboarding?.isVisible, wechatWindow?.isVisible]
+            let open = [searchWindow?.isVisible, settingsWindow?.isVisible, onboarding?.isVisible]
                 .contains { $0 == true }
             if !open {
                 NSApp.setActivationPolicy(.accessory)

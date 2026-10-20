@@ -466,3 +466,7 @@
 "Unsupported reader response. This connector expects the wx JSON protocol." = "不支持的读取器响应，此连接器要求 wx JSON 协议。";
 
 "Reader failed. Check the selected reader locally; private error output is not logged." = "读取器执行失败，请在本机检查所选读取器；私密错误输出不会写入日志。";
+"Local Files" = "本机文件";
+"Detect Again" = "重新检测";
+"WeChat reader not found. Install and configure wx on this Mac, then detect again." = "未检测到微信读取服务。请在本机安装并配置 wx，然后重新检测。";
+"Local WeChat reader detected. Your reader manages the account and data location." = "已检测到本机微信读取服务，账号与数据位置由读取服务自动管理。";
