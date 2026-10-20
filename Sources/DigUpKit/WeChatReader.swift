@@ -123,6 +123,49 @@ public struct WeChatReader: Sendable {
         }
     }
 
+    /// Fetch only the selected message's image, matching both timestamp and local identity.
+    public func image(message: WeChatMessage, session: WeChatSession) throws -> Data {
+        let raw = try JSONSerialization.jsonObject(with: message.raw) as? [String: Any]
+        guard let localID = raw?["local_id"] else { throw WeChatReadError.invalidResponse }
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"; formatter.timeZone = .current
+        let date = Date(timeIntervalSince1970: message.timestamp)
+        let start = formatter.string(from: date)
+        let end = formatter.string(from: Calendar.current.date(byAdding: .day, value: 1, to: date)!)
+        var attachment: String?
+        for offset in stride(from: 0, to: 1000, by: 200) {
+            let (items, _) = try Self.rows(run(["attachments", session.id, "--kind", "image", "--since", start,
+                "--until", end, "--limit", "200", "--offset", String(offset), "--json"]),
+                key: "attachments", expectedUsername: session.id)
+            attachment = items.first {
+                String(describing: $0["local_id"] ?? "") == String(describing: localID)
+                    && ($0["timestamp"] as? NSNumber)?.doubleValue == message.timestamp
+            }?["attachment_id"] as? String
+            if attachment != nil || items.count < 200 { break }
+        }
+        guard let attachment, !attachment.isEmpty, !attachment.hasPrefix("-") else { throw WeChatReadError.invalidResponse }
+        let fm = FileManager.default
+        let folder = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? fm.removeItem(at: folder) }
+        var file = folder.appendingPathComponent("image.bin")
+        _ = try run(["extract", attachment, "--output", file.path, "--json"])
+        func boundedData(_ url: URL) throws -> Data {
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size > 0, size <= 20 * 1024 * 1024 else { throw WeChatReadError.outputLimit }
+            return try Data(contentsOf: url)
+        }
+        let original = try boundedData(file)
+        if original.starts(with: Data("wxgf".utf8)) {
+            guard let ffmpeg = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
+                .first(where: { fm.isExecutableFile(atPath: $0) }) else { throw WeChatReadError.executable }
+            let decoded = folder.appendingPathComponent("preview.png")
+            _ = try WeChatProcess.run(executable: ffmpeg, arguments: ["-v", "error", "-f", "hevc", "-i", file.path,
+                "-frames:v", "1", "-vf", "scale=1600:1600:force_original_aspect_ratio=decrease", decoded.path])
+            file = decoded
+        }
+        return try boundedData(file)
+    }
+
     public static func date(_ value: String, timeZone: TimeZone) -> Date? {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

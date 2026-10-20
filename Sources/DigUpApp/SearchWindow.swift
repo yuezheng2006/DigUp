@@ -36,8 +36,7 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
     func showWeChat() {
         guard WeChatAvailability.enabled else { return }
         show()
-        app.wechatWindow.state.detectReader()
-        app.wechatWindow.state.selected = true
+        app.wechatWindow.state.open()
     }
 
     func close() {
@@ -536,8 +535,7 @@ private struct KindFilters: View {
             if WeChatAvailability.enabled {
             chip(title: L("WeChat"), symbol: "bubble.left.and.bubble.right", count: nil,
                  selected: wechat.selected) {
-                if !wechat.selected { wechat.detectReader() }
-                wechat.selected = true
+                if !wechat.selected { wechat.open() }
             }
             }
             if showsCode {
