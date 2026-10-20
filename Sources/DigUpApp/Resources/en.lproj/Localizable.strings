@@ -470,3 +470,5 @@
 "Detect Again" = "Detect Again";
 "WeChat reader not found. Install and configure wx on this Mac, then detect again." = "WeChat reader not found. Install and configure wx on this Mac, then detect again.";
 "Local WeChat reader detected. Your reader manages the account and data location." = "Local WeChat reader detected. Your reader manages the account and data location.";
+"WeChat" = "WeChat";
+"After authorization, load recent conversations, then choose a group or individual chat and a date range. Only the selected conversation is read; cancel authorization to clear results." = "After authorization, load recent conversations, then choose a group or individual chat and a date range. Only the selected conversation is read; cancel authorization to clear results.";

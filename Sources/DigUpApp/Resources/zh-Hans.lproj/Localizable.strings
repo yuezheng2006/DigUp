@@ -470,3 +470,5 @@
 "Detect Again" = "重新检测";
 "WeChat reader not found. Install and configure wx on this Mac, then detect again." = "未检测到微信读取服务。请在本机安装并配置 wx，然后重新检测。";
 "Local WeChat reader detected. Your reader manages the account and data location." = "已检测到本机微信读取服务，账号与数据位置由读取服务自动管理。";
+"WeChat" = "微信";
+"After authorization, load recent conversations, then choose a group or individual chat and a date range. Only the selected conversation is read; cancel authorization to clear results." = "授权后可加载最近会话，再选择群聊或个人聊天及日期范围。仅读取选定会话；取消授权会清空结果。";

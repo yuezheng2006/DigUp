@@ -61,7 +61,7 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
         if UserDefaults.standard.string(forKey: "defaultsSuite") == nil {
             window.setFrameAutosaveName("DigUpSearchWindow")
         }
-        window.contentView = NSHostingView(rootView: ProductSearchView(search: search, app: app, wechat: app.wechatWindow.state))
+        window.contentView = NSHostingView(rootView: SearchWindowView(search: search, model: app.model, app: app, wechat: app.wechatWindow.state))
         if window.frame.origin == .zero { window.center() }
         self.window = window
         return window
@@ -338,43 +338,20 @@ final class SearchModel {
 
 // MARK: Views
 
-struct ProductSearchView: View {
-    let search: SearchModel
-    let app: AppController
-    @Bindable var wechat: WeChatState
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button(L("Local Files")) { wechat.selected = false }
-                    .disabled(!wechat.selected)
-                Button(L("WeChat Messages")) {
-                    if !wechat.selected { wechat.detectReader() }
-                    wechat.selected = true
-                }.disabled(wechat.selected)
-                Spacer()
-            }.padding(.horizontal, 20).padding(.vertical, 8)
-            Divider()
-            if wechat.selected {
-                WeChatView(state: wechat)
-            } else {
-                SearchWindowView(search: search, model: app.model, app: app)
-                    .padding(.top, 28)
-            }
-        }
-    }
-}
-
 struct SearchWindowView: View {
     @Bindable var search: SearchModel
     let model: AppModel
     let app: AppController
+    @Bindable var wechat: WeChatState
     @State private var fieldFocused = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
+            if wechat.selected {
+                WeChatView(state: wechat)
+            } else {
             HStack(spacing: 0) {
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -395,6 +372,7 @@ struct SearchWindowView: View {
             }
             Divider()
             statusBar
+            }
         }
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 820, minHeight: 520)
@@ -408,11 +386,12 @@ struct SearchWindowView: View {
                         .font(.system(size: search.isCode ? 15 : 17, weight: .semibold))
                         .foregroundStyle(Brand.gradient)
                         .frame(width: 22)
-                    SearchField(text: $search.query, fontSize: 18, placeholder: placeholder,
+                    SearchField(text: wechat.selected ? $wechat.query : $search.query, fontSize: 18,
+                                placeholder: wechat.selected ? L("Search within loaded messages (text or sender)") : placeholder,
                                 onMake: { search.field = $0 }, onFocus: { fieldFocused = $0 })
-                    if !search.query.isEmpty {
+                    if !(wechat.selected ? wechat.query : search.query).isEmpty {
                         Button {
-                            search.query = ""
+                            if wechat.selected { wechat.query = "" } else { search.query = "" }
                         } label: {
                             Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
                         }
@@ -448,7 +427,7 @@ struct SearchWindowView: View {
             }
             .padding(.leading, 78)   // beside the window buttons
             .frame(height: 52)
-            KindFilters(search: search, showsCode: model.hasCode)
+            KindFilters(search: search, wechat: wechat, showsCode: model.hasCode)
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 10)
@@ -537,23 +516,32 @@ struct SearchWindowView: View {
 /// on, Code after them: a search of code alone (as "code:" is).
 private struct KindFilters: View {
     @Bindable var search: SearchModel
+    @Bindable var wechat: WeChatState
     var showsCode = false
 
     var body: some View {
         HStack(spacing: 6) {
-            chip(title: L("All"), symbol: nil, count: nil, selected: search.filter == nil && !search.isCode) {
+            chip(title: L("All"), symbol: nil, count: nil, selected: !wechat.selected && search.filter == nil && !search.isCode) {
+                wechat.selected = false
                 search.filter = nil
             }
             ForEach(ResultGroupKind.files, id: \.self) { kind in
                 chip(title: kind.title, symbol: kind.symbol, count: search.isCode ? nil : search.counts[kind],
-                     selected: search.filter == kind && !search.isCode) {
+                     selected: !wechat.selected && search.filter == kind && !search.isCode) {
+                    wechat.selected = false
                     search.filter = search.filter == kind ? nil : kind
                 }
+            }
+            chip(title: L("WeChat"), symbol: "bubble.left.and.bubble.right", count: nil,
+                 selected: wechat.selected) {
+                if !wechat.selected { wechat.detectReader() }
+                wechat.selected = true
             }
             if showsCode {
                 Divider().frame(height: 16).padding(.horizontal, 4)
                 chip(title: L("Code"), symbol: FileKind.code.symbol, count: search.isCode ? search.counts[.code] : nil,
-                     selected: search.isCode, shortcut: 7) {
+                     selected: !wechat.selected && search.isCode, shortcut: 7) {
+                    wechat.selected = false
                     search.filter = search.filter == .code ? nil : .code
                 }
             }
@@ -580,7 +568,7 @@ private struct KindFilters: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help("\(title) (⌘\(number))")
+        .help(title == L("WeChat") ? title : "\(title) (⌘\(number))")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

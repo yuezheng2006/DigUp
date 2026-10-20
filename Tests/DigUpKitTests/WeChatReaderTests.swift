@@ -165,6 +165,27 @@ import Testing
         #expect(result.messages.isEmpty)
         #expect(result.statuses == ["possibly_stale"])
     }
+    @Test func groupAndIndividualWithSameNameStayIsolated() throws {
+        let timestamp = WeChatReader.date("2026-10-20", timeZone: zone)!.timeIntervalSince1970 + 60
+        let reader = WeChatReader { args in
+            if args[0] == "sessions" {
+                return Data(#"{"sessions":[{"username":"group@chatroom","chat":"Same"},{"username":"wxid_person","chat":"Same"}]}"#.utf8)
+            }
+            let id = args[1]
+            return try JSONSerialization.data(withJSONObject: [
+                "username": id,
+                "messages": [["local_id": 1, "timestamp": timestamp,
+                              "sender": "Synthetic", "content": id, "type": "text"]]
+            ])
+        }
+        let sessions = try reader.sessions()
+        #expect(sessions.count == 2)
+        for session in sessions {
+            let result = try reader.history(session: session, since: "2026-10-20", until: "2026-10-21", timeZone: zone)
+            #expect(result.messages.count == 1)
+            #expect(result.messages.first?.content == session.id)
+        }
+    }
     @Test func processBoundsOutputAndTime() throws {
         #expect(throws: WeChatReadError.outputLimit) {
             try WeChatProcess.run(executable: "/bin/sh", arguments: ["-c", "while :; do printf '1234567890'; done"], maxBytes: 100)

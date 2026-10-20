@@ -37,7 +37,7 @@ final class WeChatState {
 
     private func message(_ error: Error) -> String {
         switch error as? WeChatReadError {
-        case .executable: L("Choose an executable wx reader that is already configured.")
+        case .executable: L("WeChat reader not found. Install and configure wx on this Mac, then detect again.")
         case .timeout: L("Reader timed out. Check its service before trying again; no automatic retry was made.")
         case .outputLimit: L("Reader output exceeded the limit. Choose a smaller date range.")
         case .invalidRange: L("Choose a start date before the end date, at most 31 days apart.")
@@ -108,6 +108,8 @@ struct WeChatView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L("WeChat Messages")).font(.title2.bold())
+            Text(L("After authorization, load recent conversations, then choose a group or individual chat and a date range. Only the selected conversation is read; cancel authorization to clear results."))
+                .font(.callout).foregroundStyle(.secondary)
             Text(L("Read an authorized local account through your configured wx reader. Nothing is sent or added to the file index."))
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
@@ -144,7 +146,6 @@ struct WeChatView: View {
                 if result.truncated {
                     Text(L("Read limit reached. Results may be incomplete; narrow the date range.")).foregroundStyle(.orange)
                 }
-                TextField(L("Search within loaded messages (text or sender)"), text: $state.query)
                 Text(L("{0} matching messages", state.visibleMessages.count)).font(.caption)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
