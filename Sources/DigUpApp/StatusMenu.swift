@@ -119,7 +119,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             search.keyEquivalentModifierMask = modifiers
         }
         menu.addItem(search)
-        menu.addItem(ActionMenuItem(L("WeChat Messages…")) { [weak self] in self?.onWeChat() })
+        if WeChatAvailability.enabled {
+            menu.addItem(ActionMenuItem(L("WeChat Messages…")) { [weak self] in self?.onWeChat() })
+        }
         menu.addItem(ActionMenuItem(L("Open DigUp")) { [weak self] in self?.onOpenWindow() })
         if model.hasFolders {
             menu.addItem(.separator())

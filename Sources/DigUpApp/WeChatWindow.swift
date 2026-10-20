@@ -3,6 +3,18 @@ import DigUpKit
 import Observation
 import SwiftUI
 
+/// Real-account acceptance is pending. Never expose this feature in release builds.
+enum WeChatAvailability {
+    static var enabled: Bool {
+        #if DEBUG
+        return UserDefaults.standard.string(forKey: "defaultsSuite") != nil
+            && UserDefaults.standard.bool(forKey: "debugWeChat")
+        #else
+        return false
+        #endif
+    }
+}
+
 @Observable
 final class WeChatState {
     var executable = ""
@@ -48,7 +60,7 @@ final class WeChatState {
     }
 
     func loadSessions() {
-        guard authorized, !busy else { return }
+        guard WeChatAvailability.enabled, authorized, !busy else { return }
         reset()
         busy = true
         let reader = WeChatReader(executable: executable), token = generation
@@ -67,7 +79,7 @@ final class WeChatState {
     }
 
     func read() {
-        guard authorized, !busy, let session = sessions.first(where: { $0.id == selection }) else { return }
+        guard WeChatAvailability.enabled, authorized, !busy, let session = sessions.first(where: { $0.id == selection }) else { return }
         result = nil; error = nil; busy = true
         let reader = WeChatReader(executable: executable), token = generation
         let formatter = DateFormatter()
