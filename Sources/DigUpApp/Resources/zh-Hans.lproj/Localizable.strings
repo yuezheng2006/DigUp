@@ -478,3 +478,21 @@
 "Refresh" = "刷新";
 "View Image" = "查看图片";
 "Image unavailable. It may not be downloaded or its decoder is missing." = "图片暂不可用，可能未下载或缺少解码工具。";
+"Find conversation" = "查找会话";
+"Preparing semantic search…" = "正在准备语义搜索…";
+"Text search only" = "仅文字搜索";
+"Indexing {0}/{1}" = "正在索引 {0}/{1}";
+"Semantic search ready · {0}" = "语义索引就绪 · {0}";
+"Search chat messages by words or meaning" = "搜索聊天内容或描述含义…";
+
+"Conversations" = "会话";
+
+"All conversations" = "全部会话";
+
+"Group chats" = "群聊";
+
+"Personal chats" = "个人聊天";
+
+"Official accounts" = "公众号";
+
+"Other conversations" = "其他会话";

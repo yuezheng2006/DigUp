@@ -387,7 +387,7 @@ struct SearchWindowView: View {
                         .foregroundStyle(Brand.gradient)
                         .frame(width: 22)
                     SearchField(text: wechat.selected ? $wechat.query : $search.query, fontSize: 18,
-                                placeholder: wechat.selected ? L("Search within loaded messages (text or sender)") : placeholder,
+                                placeholder: wechat.selected ? L("Search chat messages by words or meaning") : placeholder,
                                 onMake: { search.field = $0 }, onFocus: { fieldFocused = $0 })
                     if !(wechat.selected ? wechat.query : search.query).isEmpty {
                         Button {

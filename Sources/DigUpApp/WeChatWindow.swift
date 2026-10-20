@@ -16,13 +16,89 @@ final class WeChatState {
     var selection = ""
     var since = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
     var until = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-    var query = ""
+    var query = "" { didSet { searchMessages() } }
     var result: WeChatReadResult?
     var busy = false
     var error: String?
     private var generation = UUID()
     private var cancelWork: (() -> Void)?
 
+    private let engine: Engine
+    private let semanticIndex: WeChatSemanticIndex?
+    private var indexTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
+    private var vectors: [String: [Float]] = [:]
+    private var vectorSource: String?
+    private var rankedIDs: [String]?
+    var indexStatus = ""
+    var conversationQuery = ""
+    var conversationKind = "all"
+    var filteredSessions: [WeChatSession] {
+        sessions.filter {
+            (conversationKind == "all" || $0.kind.rawValue == conversationKind)
+            && (conversationQuery.isEmpty || $0.name.localizedCaseInsensitiveContains(conversationQuery))
+        }
+    }
+    init(engine: Engine) {
+        self.engine = engine
+        semanticIndex = try? WeChatSemanticIndex(directory: engine.indexDirectory.appendingPathComponent("WeChat"))
+    }
+    private func clearSearch() {
+        indexTask?.cancel(); searchTask?.cancel()
+        vectors = [:]; vectorSource = nil; rankedIDs = nil; indexStatus = ""
+    }
+    private func indexMessages(_ messages: [WeChatMessage], session: WeChatSession) {
+        let token = generation
+        let documents = messages.filter { ["text", "文本", "1"].contains($0.type.lowercased()) && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { ($0.id, Prompts.document(title: session.name, text: String($0.content.prefix(4000)))) }
+        guard !documents.isEmpty else { return }
+        indexStatus = L("Preparing semantic search…")
+        indexTask = Task {
+            do {
+                guard let semanticIndex, let source = await engine.chatEmbeddingSource() else {
+                    if token == generation { indexStatus = L("Text search only") }
+                    return
+                }
+                try Task.checkCancellation()
+                let keys = documents.map { WeChatSemanticIndex.key(session: session.id, message: $0.0, document: $0.1) }
+                let cached = try await semanticIndex.cached(keys: keys, source: source)
+                guard token == generation else { return }
+                vectorSource = source
+                for (i, document) in documents.enumerated() { vectors[document.0] = cached[keys[i]] }
+                let missing = documents.indices.filter { cached[keys[$0]] == nil }
+                for start in stride(from: 0, to: missing.count, by: 8) {
+                    try Task.checkCancellation()
+                    let batch = Array(missing[start..<min(start + 8, missing.count)])
+                    guard let embedded = await engine.embedChatDocuments(batch.map { documents[$0].1 }), embedded.count == batch.count,
+                          embedded.allSatisfy({ $0.source == source }) else { throw WeChatReadError.invalidResponse }
+                    try Task.checkCancellation()
+                    guard token == generation else { return }
+                    var save: [String: [Float]] = [:]
+                    for (i, embedding) in zip(batch, embedded) { vectors[documents[i].0] = embedding.values; save[keys[i]] = embedding.values }
+                    try await semanticIndex.store(save, source: source)
+                    guard !Task.isCancelled, token == generation else { return }
+                    indexStatus = L("Indexing {0}/{1}", vectors.count, documents.count)
+                }
+                guard token == generation else { return }
+                indexStatus = L("Semantic search ready · {0}", vectors.count)
+                searchMessages()
+            } catch is CancellationError {} catch {
+                if token == generation { indexStatus = L("Text search only") }
+            }
+        }
+    }
+    private func searchMessages() {
+        searchTask?.cancel(); rankedIDs = nil
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines), token = generation
+        guard !text.isEmpty, !vectors.isEmpty, let source = vectorSource else { return }
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            guard let queryVector = await engine.embedChatQuery(text), queryVector.source == source,
+                  !Task.isCancelled, token == generation, query.trimmingCharacters(in: .whitespacesAndNewlines) == text else { return }
+            rankedIDs = WeChatSemanticIndex.rank(messages: result?.messages ?? [], vectors: vectors, query: text, queryVector: queryVector.values)
+        }
+    }
     var selected = false
     var images: [String: NSImage] = [:]
     var imageErrors: Set<String> = []
@@ -60,6 +136,8 @@ final class WeChatState {
     }
 
     func open() {
+        selected = true
+        if !sessions.isEmpty { return }
         detectReader()
         authorized = true
         selected = true
@@ -67,6 +145,8 @@ final class WeChatState {
     }
 
     func reset() {
+        clearSearch()
+        busy = false
         clearMedia()
         cancelWork?()
         cancelWork = nil
@@ -100,13 +180,15 @@ final class WeChatState {
             } catch {
                 if token == generation { self.error = message(error) }
             }
-            cancelWork = nil
-            busy = false
+            if token == generation { cancelWork = nil; busy = false }
         }
     }
 
     func read() {
-        guard WeChatAvailability.enabled, authorized, !busy, let session = sessions.first(where: { $0.id == selection }) else { return }
+        guard WeChatAvailability.enabled, authorized, let session = sessions.first(where: { $0.id == selection }) else { return }
+        cancelWork?()
+        generation = UUID()
+        clearSearch()
         clearMedia()
         result = nil; error = nil; busy = true
         let reader = WeChatReader(executable: executable), token = generation
@@ -122,18 +204,21 @@ final class WeChatState {
         Task {
             do {
                 let found = try await work.value
-                if token == generation { result = found }
+                if token == generation { result = found; indexMessages(found.messages, session: session) }
             } catch {
                 if token == generation { self.error = message(error) }
             }
-            cancelWork = nil
-            busy = false
+            if token == generation { cancelWork = nil; busy = false }
         }
     }
 
     var visibleMessages: [WeChatMessage] {
         let messages = result?.messages ?? []
         guard !query.isEmpty else { return messages }
+        if let rankedIDs {
+            let byID = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
+            return rankedIDs.compactMap { byID[$0] }
+        }
         return messages.filter { $0.content.localizedCaseInsensitiveContains(query) || $0.sender.localizedCaseInsensitiveContains(query) }
     }
 }
@@ -141,26 +226,60 @@ final class WeChatState {
 struct WeChatView: View {
     @Bindable var state: WeChatState
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 0) {
+            VStack(spacing: 10) {
+                HStack {
+                    TextField(L("Find conversation"), text: $state.conversationQuery)
+                    Button { state.loadSessions() } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.plain).help(L("Refresh")).disabled(state.busy)
+                }.padding(.horizontal, 12).padding(.top, 12)
+                Picker(L("Conversations"), selection: $state.conversationKind) {
+                    Text(L("All conversations")).tag("all")
+                    Text(L("Group chats")).tag("group")
+                    Text(L("Personal chats")).tag("person")
+                    Text(L("Official accounts")).tag("official")
+                    Text(L("Other conversations")).tag("other")
+                }.labelsHidden().padding(.horizontal, 12)
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(state.filteredSessions) { session in
+                            Button {
+                                guard state.selection != session.id else { return }
+                                state.selection = session.id; state.query = ""; state.read()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: session.kind == .group ? "person.2" : session.kind == .official ? "megaphone" : session.kind == .person ? "person" : "bubble.left")
+                                        .frame(width: 20).foregroundStyle(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(session.name == session.id ? L("Unnamed conversation") : session.name)
+                                            .lineLimit(2).multilineTextAlignment(.leading)
+                                        Text(L(session.kind == .group ? "Group chats" : session.kind == .official ? "Official accounts" : session.kind == .person ? "Personal chats" : "Other conversations"))
+                                            .font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 12).padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(state.selection == session.id ? Color.accentColor.opacity(0.15) : Color.clear)
+                                .contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+            }.frame(width: 220)
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
             if state.executable.isEmpty {
                 Text(L("WeChat reader not found. Install and configure wx on this Mac, then detect again."))
                     .foregroundStyle(.secondary)
                 Button(L("Detect Again")) { state.open() }
             }
             HStack {
-                Picker(L("Conversation"), selection: $state.selection) {
-                    Text(L("Choose a conversation")).tag("")
-                    ForEach(state.sessions) { session in
-                        Text(session.name == session.id ? L("Unnamed conversation") : session.name).tag(session.id)
-                    }
-                }
-                .onChange(of: state.selection) { _, _ in
-                    state.clearMedia(); state.result = nil; state.query = ""
-                    if !state.selection.isEmpty { state.read() }
-                }
-                Button(L("Refresh")) { state.selection.isEmpty ? state.loadSessions() : state.read() }
+                Text(state.sessions.first(where: { $0.id == state.selection }).map { $0.name == $0.id ? L("Unnamed conversation") : $0.name } ?? L("Choose a conversation"))
+                    .font(.headline).lineLimit(1)
+                Spacer()
+                Button(L("Refresh")) { state.read() }.disabled(state.selection.isEmpty || state.busy)
             }
-            .disabled(state.busy || state.executable.isEmpty)
             HStack {
                 DatePicker(L("From"), selection: $state.since, displayedComponents: .date)
                 DatePicker(L("Until (exclusive)"), selection: $state.until, displayedComponents: .date)
@@ -174,7 +293,11 @@ struct WeChatView: View {
                 if result.truncated {
                     Text(L("Read limit reached. Results may be incomplete; narrow the date range.")).foregroundStyle(.orange)
                 }
-                Text(L("{0} matching messages", state.visibleMessages.count)).font(.caption)
+                HStack {
+                    Text(L("{0} matching messages", state.visibleMessages.count))
+                    Spacer()
+                    Text(state.indexStatus)
+                }.font(.caption).foregroundStyle(.secondary)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(state.visibleMessages) { item in
@@ -207,15 +330,16 @@ struct WeChatView: View {
             } else {
                 Spacer()
             }
-        }.padding(20).frame(minWidth: 760, minHeight: 400)
+            }.padding(16).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }.frame(minWidth: 760, minHeight: 400)
     }
 }
 
 /// Routes the menu shortcut to the main product window; owns no separate window.
 final class WeChatWindowController {
     private unowned let app: AppController
-    let state = WeChatState()
-    init(app: AppController) { self.app = app }
+    let state: WeChatState
+    init(app: AppController) { self.app = app; state = WeChatState(engine: app.engine) }
     func show() { app.searchWindow.showWeChat() }
     func snapshot(to url: URL) throws { try app.searchWindow.snapshot(to: url) }
 }
