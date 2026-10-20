@@ -472,3 +472,9 @@
 "Local WeChat reader detected. Your reader manages the account and data location." = "Local WeChat reader detected. Your reader manages the account and data location.";
 "WeChat" = "WeChat";
 "After authorization, load recent conversations, then choose a group or individual chat and a date range. Only the selected conversation is read; cancel authorization to clear results." = "After authorization, load recent conversations, then choose a group or individual chat and a date range. Only the selected conversation is read; cancel authorization to clear results.";
+"Unnamed conversation" = "Unnamed conversation";
+"WeChat contact" = "WeChat contact";
+"Media or attachment preview is not available yet." = "Media or attachment preview is not available yet.";
+"Refresh" = "Refresh";
+"View Image" = "View Image";
+"Image unavailable. It may not be downloaded or its decoder is missing." = "Image unavailable. It may not be downloaded or its decoder is missing.";

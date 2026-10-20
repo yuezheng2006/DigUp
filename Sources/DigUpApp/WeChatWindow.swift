@@ -3,26 +3,19 @@ import DigUpKit
 import Observation
 import SwiftUI
 
-/// Real-account acceptance is pending. Never expose this feature in release builds.
+/// Enabled after real local group and individual chat acceptance.
 enum WeChatAvailability {
-    static var enabled: Bool {
-        #if DEBUG
-        return UserDefaults.standard.string(forKey: "defaultsSuite") != nil
-            && UserDefaults.standard.bool(forKey: "debugWeChat")
-        #else
-        return false
-        #endif
-    }
+    static let enabled = true
 }
 
 @Observable
 final class WeChatState {
     var executable = ""
-    var authorized = false
+    var authorized = true
     var sessions: [WeChatSession] = []
     var selection = ""
-    var since = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
-    var until = Date()
+    var since = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    var until = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
     var query = ""
     var result: WeChatReadResult?
     var busy = false
@@ -31,16 +24,50 @@ final class WeChatState {
     private var cancelWork: (() -> Void)?
 
     var selected = false
+    var images: [String: NSImage] = [:]
+    var imageErrors: Set<String> = []
+    var loadingImage: String?
+    private var imageTask: Task<Data, Error>?
+    private var mediaGeneration = UUID()
+
+    func clearMedia() {
+        imageTask?.cancel(); imageTask = nil
+        mediaGeneration = UUID(); images = [:]; imageErrors = []; loadingImage = nil
+    }
+
+    func loadImage(_ message: WeChatMessage) {
+        guard loadingImage == nil, let session = sessions.first(where: { $0.id == selection }) else { return }
+        loadingImage = message.id
+        let reader = WeChatReader(executable: executable), token = mediaGeneration
+        let work = Task.detached { try reader.image(message: message, session: session) }
+        imageTask = work
+        Task {
+            do {
+                let data = try await work.value
+                guard token == mediaGeneration else { return }
+                if let image = NSImage(data: data), image.isValid { images[message.id] = image }
+                else { imageErrors.insert(message.id) }
+            } catch {
+                if token == mediaGeneration { imageErrors.insert(message.id) }
+            }
+            if token == mediaGeneration { loadingImage = nil; imageTask = nil }
+        }
+    }
 
     func detectReader() {
         reset()
-        // Launch-only override for isolated runtime tests, never a persisted user path.
-        let override = UserDefaults.standard.string(forKey: "defaultsSuite") != nil
-            ? UserDefaults.standard.string(forKey: "wechatExecutable") : nil
-        executable = override ?? WeChatReaderLocation.detect() ?? ""
+        executable = WeChatReaderLocation.detect() ?? ""
+    }
+
+    func open() {
+        detectReader()
+        authorized = true
+        selected = true
+        if !executable.isEmpty { loadSessions() }
     }
 
     func reset() {
+        clearMedia()
         cancelWork?()
         cancelWork = nil
         generation = UUID()
@@ -80,6 +107,7 @@ final class WeChatState {
 
     func read() {
         guard WeChatAvailability.enabled, authorized, !busy, let session = sessions.first(where: { $0.id == selection }) else { return }
+        clearMedia()
         result = nil; error = nil; busy = true
         let reader = WeChatReader(executable: executable), token = generation
         let formatter = DateFormatter()
@@ -112,49 +140,37 @@ final class WeChatState {
 
 struct WeChatView: View {
     @Bindable var state: WeChatState
-    private var executableStatus: String {
-        state.executable.isEmpty
-            ? L("WeChat reader not found. Install and configure wx on this Mac, then detect again.")
-            : L("Local WeChat reader detected. Your reader manages the account and data location.")
-    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(L("WeChat Messages")).font(.title2.bold())
-            Text(L("After authorization, load recent conversations, then choose a group or individual chat and a date range. Only the selected conversation is read; cancel authorization to clear results."))
-                .font(.callout).foregroundStyle(.secondary)
-            Text(L("Read an authorized local account through your configured wx reader. Nothing is sent or added to the file index."))
-                .font(.callout).foregroundStyle(.secondary)
-            HStack {
-                Text(executableStatus).foregroundStyle(.secondary)
-                Spacer()
-                Button(L("Detect Again")) { state.detectReader() }.disabled(state.busy)
+            if state.executable.isEmpty {
+                Text(L("WeChat reader not found. Install and configure wx on this Mac, then detect again."))
+                    .foregroundStyle(.secondary)
+                Button(L("Detect Again")) { state.open() }
             }
-            Toggle(L("I am authorized to read the account configured in this reader."), isOn: $state.authorized)
-                .onChange(of: state.authorized) { _, granted in if !granted { state.reset() } }
             HStack {
-                Button(L("Load Conversations")) { state.loadSessions() }
                 Picker(L("Conversation"), selection: $state.selection) {
                     Text(L("Choose a conversation")).tag("")
-                    ForEach(state.sessions) { session in Text("\(session.name) · \(session.id)").tag(session.id) }
+                    ForEach(state.sessions) { session in
+                        Text(session.name == session.id ? L("Unnamed conversation") : session.name).tag(session.id)
+                    }
                 }
-                .onChange(of: state.selection) { _, _ in state.result = nil; state.query = "" }
+                .onChange(of: state.selection) { _, _ in
+                    state.clearMedia(); state.result = nil; state.query = ""
+                    if !state.selection.isEmpty { state.read() }
+                }
+                Button(L("Refresh")) { state.selection.isEmpty ? state.loadSessions() : state.read() }
             }
-            .disabled(!state.authorized || state.busy || state.executable.isEmpty)
+            .disabled(state.busy || state.executable.isEmpty)
             HStack {
                 DatePicker(L("From"), selection: $state.since, displayedComponents: .date)
                 DatePicker(L("Until (exclusive)"), selection: $state.until, displayedComponents: .date)
-                Button(L("Read Messages")) { state.read() }.disabled(state.selection.isEmpty)
             }
             .disabled(!state.authorized || state.busy || state.executable.isEmpty)
-            .onChange(of: state.since) { _, _ in state.result = nil }
-            .onChange(of: state.until) { _, _ in state.result = nil }
-            Text(L("Local timezone: {0}. Up to 200 recent conversations and 500 messages per read; no background sync.", TimeZone.current.identifier))
-                .font(.caption).foregroundStyle(.secondary)
+            .onChange(of: state.since) { _, _ in state.result = nil; state.read() }
+            .onChange(of: state.until) { _, _ in state.result = nil; state.read() }
             if state.busy { ProgressView().controlSize(.small) }
             if let error = state.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             if let result = state.result {
-                Text(L("{0} messages read. Source status: {1}. Phone sync freshness is not verified.", result.messages.count, result.statuses.joined(separator: ", ")))
-                    .font(.caption).textSelection(.enabled)
                 if result.truncated {
                     Text(L("Read limit reached. Results may be incomplete; narrow the date range.")).foregroundStyle(.orange)
                 }
@@ -163,11 +179,22 @@ struct WeChatView: View {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(state.visibleMessages) { item in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("\(item.sender) · \(Date(timeIntervalSince1970: item.timestamp).formatted()) · \(item.type)")
+                                Text("\(item.sender.hasPrefix("wxid_") ? L("WeChat contact") : item.sender) · \(Date(timeIntervalSince1970: item.timestamp).formatted())")
                                     .font(.caption).foregroundStyle(.secondary)
-                                Text(verbatim: item.content).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                                if !["text", "文本", "1"].contains(item.type.lowercased()) {
-                                    Text(L("Media and attachments have not been decoded.")).font(.caption).foregroundStyle(.secondary)
+                                if ["text", "文本", "1"].contains(item.type.lowercased()) {
+                                    Text(verbatim: item.content).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                                } else if ["image", "图片", "3"].contains(item.type.lowercased()) {
+                                    if let image = state.images[item.id] {
+                                        Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 220)
+                                    } else if state.imageErrors.contains(item.id) {
+                                        Text(L("Image unavailable. It may not be downloaded or its decoder is missing.")).foregroundStyle(.secondary)
+                                    } else if state.loadingImage == item.id {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Button(L("View Image")) { state.loadImage(item) }.disabled(state.loadingImage != nil)
+                                    }
+                                } else {
+                                    Text(L("Media or attachment preview is not available yet.")).foregroundStyle(.secondary)
                                 }
                                 Divider()
                             }
@@ -180,7 +207,7 @@ struct WeChatView: View {
             } else {
                 Spacer()
             }
-        }.padding(20).frame(minWidth: 760, minHeight: 560)
+        }.padding(20).frame(minWidth: 760, minHeight: 400)
     }
 }
 
