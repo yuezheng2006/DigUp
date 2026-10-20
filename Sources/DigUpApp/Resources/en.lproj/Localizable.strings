@@ -478,3 +478,21 @@
 "Refresh" = "Refresh";
 "View Image" = "View Image";
 "Image unavailable. It may not be downloaded or its decoder is missing." = "Image unavailable. It may not be downloaded or its decoder is missing.";
+"Find conversation" = "Find conversation";
+"Preparing semantic search…" = "Preparing semantic search…";
+"Text search only" = "Text search only";
+"Indexing {0}/{1}" = "Indexing {0}/{1}";
+"Semantic search ready · {0}" = "Semantic search ready · {0}";
+"Search chat messages by words or meaning" = "Search chat messages by words or meaning";
+
+"Conversations" = "Conversations";
+
+"All conversations" = "All conversations";
+
+"Group chats" = "Group chats";
+
+"Personal chats" = "Personal chats";
+
+"Official accounts" = "Official accounts";
+
+"Other conversations" = "Other conversations";

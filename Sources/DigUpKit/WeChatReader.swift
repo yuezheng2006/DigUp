@@ -8,8 +8,18 @@ public enum WeChatReadError: String, Error, Sendable {
 }
 
 public struct WeChatSession: Identifiable, Sendable, Equatable {
+    public enum Kind: String, Sendable { case group, person, official, other }
     public let id: String
     public let name: String
+    public let kind: Kind
+    public init(id: String, name: String, chatType: String? = nil) {
+        self.id = id; self.name = name
+        // Official accounts take precedence over unreliable group flags; display names are never classifiers.
+        if id.hasPrefix("gh_") || chatType == "official_account" { kind = .official }
+        else if id.hasSuffix("@chatroom") { kind = .group }
+        else if chatType == "private" || id.hasPrefix("wxid_") { kind = .person }
+        else { kind = .other }
+    }
 }
 
 public struct WeChatMessage: Identifiable, Sendable, Equatable {
@@ -115,11 +125,13 @@ public struct WeChatReader: Sendable {
     public func sessions() throws -> [WeChatSession] {
         let (rows, _) = try Self.rows(run(["sessions", "--limit", "200", "--json", "--with-meta"]), key: "sessions")
         var seen = Set<String>()
-        return try rows.map { row in
+        return try rows.compactMap { row in
             guard let id = row["username"] as? String, !id.isEmpty, !id.hasPrefix("-"),
                   seen.insert(id).inserted else { throw WeChatReadError.invalidResponse }
             let name = row["chat"] as? String ?? row["display_name"] as? String ?? row["name"] as? String ?? row["display"] as? String ?? id
-            return WeChatSession(id: id, name: name)
+            // Folded inboxes aggregate other conversations; they are not readable chat identities.
+            if row["chat_type"] as? String == "folded" { return nil }
+            return WeChatSession(id: id, name: name, chatType: row["chat_type"] as? String)
         }
     }
 
