@@ -49,3 +49,7 @@ LANGUAGE=zh_CN cargo test --manifest-path shell/src-tauri/Cargo.toml status::tes
 `swift test` 需要先运行 `scripts/build-llama.sh`。模型向量参考测试需要模型文件，未配置时沿用原测试的跳过规则。
 
 Mac 文案位于 `Sources/DigUpApp/Resources/{en,zh-Hans}.lproj/Localizable.strings`，系统权限提示位于 `Resources/zh-Hans.lproj/InfoPlist.strings`。网页文案位于 `shell/ui/i18n.js`，原生托盘文案位于 Rust 的 `i18n.rs`、`main.rs` 和 `status.rs`。动态值使用 `{0}`、`{1}` 等占位符，翻译可调换顺序，但应保留所有占位符。
+
+## 本机微信消息
+
+macOS 新增菜单栏／「文件」菜单的「微信消息…」入口，可通过用户选择的已配置 wx 读取器读取指定会话和日期范围，并在结果内搜索。消息仅保存在内存，不发送、不上传、不加入文件索引。接入条件、范围与限制见 [微信消息说明](WECHAT.zh-CN.md)。
