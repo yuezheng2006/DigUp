@@ -416,3 +416,53 @@
 "⚠︎ The model download stopped" = "⚠︎ The model download stopped";
 "Chinese fork: updates are downloaded manually from this fork’s releases." = "Chinese fork: updates are downloaded manually from this fork’s releases.";
 "Open Fork Releases" = "Open Fork Releases";
+
+"WeChat Messages…" = "WeChat Messages…";
+
+"WeChat Messages" = "WeChat Messages";
+
+"Read an authorized local account through your configured wx reader. Nothing is sent or added to the file index." = "Read an authorized local account through your configured wx reader. Nothing is sent or added to the file index.";
+
+"No reader selected" = "No reader selected";
+
+"Choose wx…" = "Choose wx…";
+
+"I am authorized to read the account configured in this reader." = "I am authorized to read the account configured in this reader.";
+
+"Load Conversations" = "Load Conversations";
+
+"Conversation" = "Conversation";
+
+"Choose a conversation" = "Choose a conversation";
+
+"Until (exclusive)" = "Until (exclusive)";
+
+"Read Messages" = "Read Messages";
+
+"Local timezone: {0}. Up to 200 recent conversations and 500 messages per read; no background sync." = "Local timezone: {0}. Up to 200 recent conversations and 500 messages per read; no background sync.";
+
+"{0} messages read. Source status: {1}. Phone sync freshness is not verified." = "{0} messages read. Source status: {1}. Phone sync freshness is not verified.";
+
+"Read limit reached. Results may be incomplete; narrow the date range." = "Read limit reached. Results may be incomplete; narrow the date range.";
+
+"Search within loaded messages (text or sender)" = "Search within loaded messages (text or sender)";
+
+"{0} matching messages" = "{0} matching messages";
+
+"Media and attachments have not been decoded." = "Media and attachments have not been decoded.";
+
+"No messages found in the local data for this range. This does not mean the phone has no messages." = "No messages found in the local data for this range. This does not mean the phone has no messages.";
+
+"Choose an executable wx reader that is already configured." = "Choose an executable wx reader that is already configured.";
+
+"Reader timed out. Check its service before trying again; no automatic retry was made." = "Reader timed out. Check its service before trying again; no automatic retry was made.";
+
+"Reader output exceeded the limit. Choose a smaller date range." = "Reader output exceeded the limit. Choose a smaller date range.";
+
+"Choose a start date before the end date, at most 31 days apart." = "Choose a start date before the end date, at most 31 days apart.";
+
+"Messages changed during pagination. No partial result was accepted; try again later." = "Messages changed during pagination. No partial result was accepted; try again later.";
+
+"Unsupported reader response. This connector expects the wx JSON protocol." = "Unsupported reader response. This connector expects the wx JSON protocol.";
+
+"Reader failed. Check the selected reader locally; private error output is not logged." = "Reader failed. Check the selected reader locally; private error output is not logged.";

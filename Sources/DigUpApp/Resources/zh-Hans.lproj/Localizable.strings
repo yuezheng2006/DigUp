@@ -416,3 +416,53 @@
 "⚠︎ The model download stopped" = "⚠︎ 模型下载已停止";
 "Chinese fork: updates are downloaded manually from this fork’s releases." = "中文分支：请从此分支的发布页手动下载更新。";
 "Open Fork Releases" = "打开分支发布页";
+
+"WeChat Messages…" = "微信消息…";
+
+"WeChat Messages" = "微信消息";
+
+"Read an authorized local account through your configured wx reader. Nothing is sent or added to the file index." = "通过已配置的 wx 读取器读取已授权的本机账号。不会发送消息，也不会加入文件索引。";
+
+"No reader selected" = "尚未选择读取器";
+
+"Choose wx…" = "选择 wx…";
+
+"I am authorized to read the account configured in this reader." = "我有权读取此读取器所配置账号的消息。";
+
+"Load Conversations" = "加载会话";
+
+"Conversation" = "会话";
+
+"Choose a conversation" = "请选择会话";
+
+"Until (exclusive)" = "结束日期（不含当天）";
+
+"Read Messages" = "读取消息";
+
+"Local timezone: {0}. Up to 200 recent conversations and 500 messages per read; no background sync." = "本地时区：{0}。最多列出 200 个最近会话，每次读取最多 500 条消息；不会后台同步。";
+
+"{0} messages read. Source status: {1}. Phone sync freshness is not verified." = "已读取 {0} 条消息。数据源状态：{1}。尚未验证是否与手机最新记录同步。";
+
+"Read limit reached. Results may be incomplete; narrow the date range." = "已达到读取上限，结果可能不完整，请缩小日期范围。";
+
+"Search within loaded messages (text or sender)" = "搜索已加载消息（正文或发送者）";
+
+"{0} matching messages" = "{0} 条匹配消息";
+
+"Media and attachments have not been decoded." = "媒体与附件尚未解码。";
+
+"No messages found in the local data for this range. This does not mean the phone has no messages." = "本地数据中未找到此日期范围的消息，不代表手机上没有消息。";
+
+"Choose an executable wx reader that is already configured." = "请选择已完成配置且可执行的 wx 读取器。";
+
+"Reader timed out. Check its service before trying again; no automatic retry was made." = "读取超时。请先检查读取器服务，再手动重试；未自动重试。";
+
+"Reader output exceeded the limit. Choose a smaller date range." = "读取器输出超过上限，请缩小日期范围。";
+
+"Choose a start date before the end date, at most 31 days apart." = "开始日期须早于结束日期，范围最多 31 天。";
+
+"Messages changed during pagination. No partial result was accepted; try again later." = "分页期间消息发生变化，未采用部分结果，请稍后重试。";
+
+"Unsupported reader response. This connector expects the wx JSON protocol." = "不支持的读取器响应，此连接器要求 wx JSON 协议。";
+
+"Reader failed. Check the selected reader locally; private error output is not logged." = "读取器执行失败，请在本机检查所选读取器；私密错误输出不会写入日志。";

@@ -76,6 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fileMenu.addItem(ActionMenuItem(L("New Search"), key: "n") { [weak app] in app?.showSearchWindow(query: "") })
         fileMenu.addItem(withTitle: L("Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
+        fileMenu.addItem(ActionMenuItem(L("WeChat Messages…")) { [weak app] in app?.wechatWindow.show() })
+
         let editMenu = NSMenu(title: L("Edit"))
         editMenu.addItem(withTitle: L("Undo"), action: Selector(("undo:")), keyEquivalent: "z")
         editMenu.addItem(withTitle: L("Redo"), action: Selector(("redo:")), keyEquivalent: "Z")
