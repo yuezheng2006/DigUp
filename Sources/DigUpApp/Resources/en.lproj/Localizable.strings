@@ -466,3 +466,7 @@
 "Unsupported reader response. This connector expects the wx JSON protocol." = "Unsupported reader response. This connector expects the wx JSON protocol.";
 
 "Reader failed. Check the selected reader locally; private error output is not logged." = "Reader failed. Check the selected reader locally; private error output is not logged.";
+"Local Files" = "Local Files";
+"Detect Again" = "Detect Again";
+"WeChat reader not found. Install and configure wx on this Mac, then detect again." = "WeChat reader not found. Install and configure wx on this Mac, then detect again.";
+"Local WeChat reader detected. Your reader manages the account and data location." = "Local WeChat reader detected. Your reader manages the account and data location.";

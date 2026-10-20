@@ -22,6 +22,7 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
     var isVisible: Bool { window?.isVisible == true }
 
     func show(query: String? = nil, kind: ResultGroupKind? = nil) {
+        app.wechatWindow.state.selected = false
         let window = self.window ?? makeWindow()
         if let query {
             search.filter = kind
@@ -30,6 +31,12 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
         app.present(window)
         if !AppController.offscreen { window.makeFirstResponder(search.field) }
         installKeyMonitor()
+    }
+
+    func showWeChat() {
+        show()
+        app.wechatWindow.state.detectReader()
+        app.wechatWindow.state.selected = true
     }
 
     func close() {
@@ -54,7 +61,7 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
         if UserDefaults.standard.string(forKey: "defaultsSuite") == nil {
             window.setFrameAutosaveName("DigUpSearchWindow")
         }
-        window.contentView = NSHostingView(rootView: SearchWindowView(search: search, model: app.model, app: app))
+        window.contentView = NSHostingView(rootView: ProductSearchView(search: search, app: app, wechat: app.wechatWindow.state))
         if window.frame.origin == .zero { window.center() }
         self.window = window
         return window
@@ -64,6 +71,8 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
             QLPreviewPanel.shared().orderOut(nil)
         }
+        app.wechatWindow.state.authorized = false
+        app.wechatWindow.state.reset()
         removeKeyMonitor()
         PreviewPlayback.shared.stop()
         window?.contentView = nil
@@ -104,6 +113,7 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
     /// Arrows move through the grid (← → only once you've arrowed, so they still move the cursor while you type),
     /// ↩ opens, ⌘↩ reveals, Space previews, ⌘C copies, Esc closes the preview or clears the search.
     private func handle(_ event: NSEvent) -> Bool {
+        guard !app.wechatWindow.state.selected else { return false }
         // An input method is composing (Japanese, Chinese…): ↩, the arrows and Esc are its keys until it's done.
         if (search.field?.currentEditor() as? NSTextView)?.hasMarkedText() == true { return false }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -327,6 +337,33 @@ final class SearchModel {
 }
 
 // MARK: Views
+
+struct ProductSearchView: View {
+    let search: SearchModel
+    let app: AppController
+    @Bindable var wechat: WeChatState
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button(L("Local Files")) { wechat.selected = false }
+                    .disabled(!wechat.selected)
+                Button(L("WeChat Messages")) {
+                    if !wechat.selected { wechat.detectReader() }
+                    wechat.selected = true
+                }.disabled(wechat.selected)
+                Spacer()
+            }.padding(.horizontal, 20).padding(.vertical, 8)
+            Divider()
+            if wechat.selected {
+                WeChatView(state: wechat)
+            } else {
+                SearchWindowView(search: search, model: app.model, app: app)
+                    .padding(.top, 28)
+            }
+        }
+    }
+}
 
 struct SearchWindowView: View {
     @Bindable var search: SearchModel

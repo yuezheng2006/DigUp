@@ -4,6 +4,16 @@ import Testing
 @testable import DigUpKit
 
 @Suite struct WeChatReaderTests {
+    @Test func locatesReaderWithoutReadingAccountData() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("wx")
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
+        #expect(WeChatReaderLocation.detect(home: root, path: root.path) == file.path)
+    }
+
     let zone = TimeZone(secondsFromGMT: 8 * 3600)!
     let session = WeChatSession(id: "synthetic@chatroom", name: "Synthetic")
     // All content and identities here are synthetic. No installed reader is called.
