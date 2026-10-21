@@ -289,6 +289,14 @@ public final class Searcher {
         return hits.prefix { $0.score >= top * ratio }.count
     }
 
+    /// Filter an already-ranked query without promoting weak matches when its top result is filtered out.
+    /// Category counts and displayed rows must share this original strong/weak boundary.
+    public static func partition(_ hits: [SearchHit], kinds: Set<FileKind>? = nil) -> (strong: [SearchHit], weaker: [SearchHit]) {
+        let boundary = strongCount(hits)
+        let allowed: (SearchHit) -> Bool = { kinds?.contains($0.kind) ?? true }
+        return (hits.prefix(boundary).filter(allowed), hits.dropFirst(boundary).filter(allowed))
+    }
+
     /// Cosine similarity of `query` with every stored vector (all are L2-normalized): a matrix-vector product, done a
     /// block of rows at a time, each block turned into float32 first.
     private func score(_ query: [Float]) -> [Float] {

@@ -22,6 +22,7 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
     var isVisible: Bool { window?.isVisible == true }
 
     func show(query: String? = nil, kind: ResultGroupKind? = nil) {
+        app.wechatWindow.state.selected = false
         let window = self.window ?? makeWindow()
         if let query {
             search.filter = kind
@@ -30,6 +31,12 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
         app.present(window)
         if !AppController.offscreen { window.makeFirstResponder(search.field) }
         installKeyMonitor()
+    }
+
+    func showWeChat() {
+        guard WeChatAvailability.enabled else { return }
+        show()
+        app.wechatWindow.state.open()
     }
 
     func close() {
@@ -54,7 +61,7 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
         if UserDefaults.standard.string(forKey: "defaultsSuite") == nil {
             window.setFrameAutosaveName("DigUpSearchWindow")
         }
-        window.contentView = NSHostingView(rootView: SearchWindowView(search: search, model: app.model, app: app))
+        window.contentView = NSHostingView(rootView: SearchWindowView(search: search, model: app.model, app: app, wechat: app.wechatWindow.state))
         if window.frame.origin == .zero { window.center() }
         self.window = window
         return window
@@ -64,6 +71,8 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
             QLPreviewPanel.shared().orderOut(nil)
         }
+        app.wechatWindow.state.authorized = false
+        app.wechatWindow.state.reset()
         removeKeyMonitor()
         PreviewPlayback.shared.stop()
         window?.contentView = nil
@@ -104,6 +113,7 @@ final class SearchWindowController: NSObject, NSWindowDelegate {
     /// Arrows move through the grid (← → only once you've arrowed, so they still move the cursor while you type),
     /// ↩ opens, ⌘↩ reveals, Space previews, ⌘C copies, Esc closes the preview or clears the search.
     private func handle(_ event: NSEvent) -> Bool {
+        guard !app.wechatWindow.state.selected else { return false }
         // An input method is composing (Japanese, Chinese…): ↩, the arrows and Esc are its keys until it's done.
         if (search.field?.currentEditor() as? NSTextView)?.hasMarkedText() == true { return false }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -309,14 +319,12 @@ final class SearchModel {
             let vector = await engine.embedQuery(text)
             guard !Task.isCancelled, current == generation else { return }
             let all = await engine.search(text, vector: vector, prefixLast: false, limit: 120)
-            let shown = filter == nil ? all : await engine.search(text, vector: vector, prefixLast: false,
-                                                                    kinds: filter!.kinds, limit: 120)
             try? await Task.sleep(until: showAt, tolerance: .milliseconds(1), clock: .continuous)
             guard !Task.isCancelled, current == generation else { return }
             var counts: [ResultGroupKind: Int] = [:]
             for hit in all.prefix(Searcher.strongCount(all)) { counts[ResultGroupKind(hit.kind), default: 0] += 1 }
             self.counts = counts
-            results = ResultSet(shown, query: text)
+            results = ResultSet(all, query: text, kinds: filter?.kinds)
             showWeaker = false
             if !rows.contains(where: { $0.id == selection }) { selection = rows.first?.id }
             hasResults = true
@@ -332,12 +340,16 @@ struct SearchWindowView: View {
     @Bindable var search: SearchModel
     let model: AppModel
     let app: AppController
+    @Bindable var wechat: WeChatState
     @State private var fieldFocused = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
+            if wechat.selected {
+                WeChatView(state: wechat)
+            } else {
             HStack(spacing: 0) {
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -358,6 +370,7 @@ struct SearchWindowView: View {
             }
             Divider()
             statusBar
+            }
         }
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 820, minHeight: 520)
@@ -371,16 +384,17 @@ struct SearchWindowView: View {
                         .font(.system(size: search.isCode ? 15 : 17, weight: .semibold))
                         .foregroundStyle(Brand.gradient)
                         .frame(width: 22)
-                    SearchField(text: $search.query, fontSize: 18, placeholder: placeholder,
+                    SearchField(text: wechat.selected ? $wechat.query : $search.query, fontSize: 18,
+                                placeholder: wechat.selected ? L("Search chat messages by words or meaning") : placeholder,
                                 onMake: { search.field = $0 }, onFocus: { fieldFocused = $0 })
-                    if !search.query.isEmpty {
+                    if !(wechat.selected ? wechat.query : search.query).isEmpty {
                         Button {
-                            search.query = ""
+                            if wechat.selected { wechat.query = "" } else { search.query = "" }
                         } label: {
                             Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
-                        .help("Clear")
+                        .help(L("Clear"))
                     }
                 }
                 .padding(.horizontal, 12)
@@ -398,7 +412,7 @@ struct SearchWindowView: View {
                         .foregroundStyle(search.showsPreview ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
                 }
                 .buttonStyle(.plain)
-                .help(search.showsPreview ? "Hide Preview" : "Show Preview")
+                .help(search.showsPreview ? L("Hide Preview") : L("Show Preview"))
                 Button {
                     app.showSettings()
                 } label: {
@@ -407,11 +421,11 @@ struct SearchWindowView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("Settings (⌘,)")
+                .help(L("Settings (⌘,)"))
             }
             .padding(.leading, 78)   // beside the window buttons
             .frame(height: 52)
-            KindFilters(search: search, showsCode: model.hasCode)
+            KindFilters(search: search, wechat: wechat, showsCode: model.hasCode)
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 10)
@@ -421,12 +435,12 @@ struct SearchWindowView: View {
         if !model.hasFolders {
             VStack(spacing: 0) {
                 BrandMark()
-                Text("Choose folders to search").font(.system(size: 20, weight: .bold)).padding(.top, 18)
-                Text("DigUp only looks where you tell it to.")
+                Text(L("Choose folders to search")).font(.system(size: 20, weight: .bold)).padding(.top, 18)
+                Text(L("DigUp only looks where you tell it to."))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
-                Button("Choose Folders…") { app.chooseFolders() }
+                Button(L("Choose Folders…")) { app.chooseFolders() }
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
                     .padding(.top, 18)
@@ -441,9 +455,9 @@ struct SearchWindowView: View {
             ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if search.results.isEmpty {
             EmptyState(symbol: search.isCode ? FileKind.code.symbol : "magnifyingglass",
-                       title: "No good matches for “\(search.query.trimmingCharacters(in: .whitespaces))”",
-                       message: search.isCode ? "Try saying what the code does, or a name that's in it."
-                           : "Try describing what's in it: what you'd see or hear, or words you remember.")
+                       title: L("No good matches for “{0}”", search.query.trimmingCharacters(in: .whitespaces)),
+                       message: search.isCode ? L("Try saying what the code does, or a name that's in it.")
+                           : L("Try describing what's in it: what you'd see or hear, or words you remember."))
         } else if search.isCode {
             CodeResultsList(search: search)
         } else {
@@ -460,7 +474,7 @@ struct SearchWindowView: View {
             Button(model.statusLine) { app.showSettings(.folders) }
                 .buttonStyle(.plain)
                 .lineLimit(1)
-                .help("Folders and indexing")
+                .help(L("Folders and indexing"))
             Spacer()
             if search.hasResults, !search.query.isEmpty {
                 Text(model.resultsCaveat ?? resultCount).lineLimit(1)
@@ -469,11 +483,11 @@ struct SearchWindowView: View {
                 Button {
                     app.updates.checkNow()
                 } label: {
-                    Label("DigUp \(version) is available", systemImage: "arrow.down.circle.fill")
+                    Label(L("DigUp {0} is available", version), systemImage: "arrow.down.circle.fill")
                         .foregroundStyle(Brand.ember)
                 }
                 .buttonStyle(.plain)
-                .help("See what's new and update")
+                .help(L("See what's new and update"))
             }
         }
         .font(.system(size: 11))
@@ -484,15 +498,15 @@ struct SearchWindowView: View {
 
     /// Examples of what to type: code's with the Code chip on, and one of them with code search on (as the panel's).
     private var placeholder: String {
-        if search.filter == .code { return "Describe the code: “retry a request with backoff”, a name in it…" }
-        return model.hasCode ? "Describe it: “zebra in a video”, “code: retry with backoff”…"
-            : "Describe it: “receipt from the hardware store”, “zebra in a video”…"
+        if search.filter == .code { return L("Describe the code: “retry a request with backoff”, a name in it…") }
+        return model.hasCode ? L("Describe it: “zebra in a video”, “code: retry with backoff”…")
+            : L("Describe it: “receipt from the hardware store”, “zebra in a video”…")
     }
 
     private var resultCount: String {
         let count = search.results.ranked.count
-        return (count == 1 ? "1 result" : "\(count) results")
-            + (search.results.weaker.isEmpty ? "" : " · \(search.results.weaker.count) weaker")
+        return (count == 1 ? L("1 result") : L("{0} results", count))
+            + (search.results.weaker.isEmpty ? "" : L(" · {0} weaker", search.results.weaker.count))
     }
 }
 
@@ -500,23 +514,33 @@ struct SearchWindowView: View {
 /// on, Code after them: a search of code alone (as "code:" is).
 private struct KindFilters: View {
     @Bindable var search: SearchModel
+    @Bindable var wechat: WeChatState
     var showsCode = false
 
     var body: some View {
         HStack(spacing: 6) {
-            chip(title: "All", symbol: nil, count: nil, selected: search.filter == nil && !search.isCode) {
+            chip(title: L("All"), symbol: nil, count: nil, selected: !wechat.selected && search.filter == nil && !search.isCode) {
+                wechat.selected = false
                 search.filter = nil
             }
             ForEach(ResultGroupKind.files, id: \.self) { kind in
                 chip(title: kind.title, symbol: kind.symbol, count: search.isCode ? nil : search.counts[kind],
-                     selected: search.filter == kind && !search.isCode) {
+                     selected: !wechat.selected && search.filter == kind && !search.isCode) {
+                    wechat.selected = false
                     search.filter = search.filter == kind ? nil : kind
                 }
             }
+            if WeChatAvailability.enabled {
+            chip(title: L("WeChat"), symbol: "bubble.left.and.bubble.right", count: nil,
+                 selected: wechat.selected) {
+                if !wechat.selected { wechat.open() }
+            }
+            }
             if showsCode {
                 Divider().frame(height: 16).padding(.horizontal, 4)
-                chip(title: "Code", symbol: FileKind.code.symbol, count: search.isCode ? search.counts[.code] : nil,
-                     selected: search.isCode, shortcut: 7) {
+                chip(title: L("Code"), symbol: FileKind.code.symbol, count: search.isCode ? search.counts[.code] : nil,
+                     selected: !wechat.selected && search.isCode, shortcut: 7) {
+                    wechat.selected = false
                     search.filter = search.filter == .code ? nil : .code
                 }
             }
@@ -543,7 +567,7 @@ private struct KindFilters: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help("\(title) (⌘\(number))")
+        .help(title == L("WeChat") ? title : "\(title) (⌘\(number))")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -723,7 +747,7 @@ private struct CodeResultRow: View {
             .fill(selected ? Color.accentColor.opacity(0.22) : Color.clear))
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Code, \(row.name), \(row.reason)")
+        .accessibilityLabel(L("Code, {0}, {1}", row.name, row.reason))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -740,17 +764,17 @@ private struct CodeOffOrHint: View {
                 .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(Brand.gradient)
             if phase == .codeOff {
-                Text("Code search is off").font(.system(size: 17, weight: .semibold))
-                Text("DigUp can find code by what it does, in the folders you pick. Code gets an index of its own and "
-                     + "never shows up in other searches.")
+                Text(L("Code search is off")).font(.system(size: 17, weight: .semibold))
+                Text(L("DigUp can find code by what it does, in the folders you pick. Code gets an index of its own and ")
+                     + L("never shows up in other searches."))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
-                Button("Choose Code Folders…", action: chooseFolders).padding(.top, 6)
+                Button(L("Choose Code Folders…"), action: chooseFolders).padding(.top, 6)
             } else {
-                Text("Search your code").font(.system(size: 17, weight: .semibold))
-                Text("Say what the code does, or type a name that's in it.")
+                Text(L("Search your code")).font(.system(size: 17, weight: .semibold))
+                Text(L("Say what the code does, or type a name that's in it."))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -796,7 +820,7 @@ struct WeakerToggle: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .rotationEffect(.degrees(expanded ? 90 : 0))
-                Text(expanded ? "Weaker matches" : "\(count) weaker \(count == 1 ? "match" : "matches")")
+                Text(expanded ? L("Weaker matches") : L("{0} weaker {1}", count, count == 1 ? L("match") : L("matches")))
                     .font(.system(size: 12, weight: .medium))
             }
             .foregroundStyle(.secondary)
@@ -842,25 +866,25 @@ private struct SearchHome: View {
     @State private var kinds: [FileKind: Int] = [:]
 
     private static let examples: [(text: String, kind: ResultGroupKind)] = [
-        ("a screenshot of an error message", .screenshots), ("receipt", .documents), ("whiteboard notes", .images),
-        ("someone laughing", .audio), ("a dog on the beach", .video), ("slides about the budget", .documents),
+        (L("a screenshot of an error message"), .screenshots), (L("receipt"), .documents), (L("whiteboard notes"), .images),
+        (L("someone laughing"), .audio), (L("a dog on the beach"), .video), (L("slides about the budget"), .documents),
     ]
 
     var body: some View {
         VStack(spacing: 0) {
             BrandMark()
-            Text("Describe it. Dig it up.")
+            Text(L("Describe it. Dig it up."))
                 .font(.system(size: 24, weight: .bold))
                 .padding(.top, 18)
-            Text("Type what you remember in the search field above: what's in it, what it looks or sounds like, or "
-                 + "words from it.")
+            Text(L("Type what you remember in the search field above: what's in it, what it looks or sounds like, or ")
+                 + L("words from it."))
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 440)
                 .padding(.top, 6)
-            Text("TRY")
+            Text(L("TRY"))
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(.tertiary)
@@ -876,15 +900,15 @@ private struct SearchHome: View {
                 if !kinds.isEmpty {
                     HStack(spacing: 8) {
                         KindCounts(counts: kinds)
-                        Text("in \(folders)")
+                        Text(L("in {0}", folders))
                     }
                 } else if model.status.searchable > 0 {
-                    Text("\(model.status.searchable.formatted()) files to search in \(folders)")
+                    Text(L("{0} files to search in {1}", model.status.searchable.formatted(), folders))
                 }
                 if let hotkey = model.hotkey {
                     HStack(spacing: 6) {
                         Keycaps(caps: hotkey.caps, size: 10)
-                        Text("opens DigUp from any app")
+                        Text(L("opens DigUp from any app"))
                     }
                 }
             }
@@ -905,12 +929,12 @@ private struct SearchHome: View {
 
     /// With code search on, one of code's too.
     private var examples: [(text: String, kind: ResultGroupKind)] {
-        Self.examples + (model.hasCode ? [("code: where the settings are saved", .code)] : [])
+        Self.examples + (model.hasCode ? [(L("code: where the settings are saved"), .code)] : [])
     }
 
     private var folders: String {
         let names = model.settings.roots.map(\.lastPathComponent)
-        return names.count <= 3 ? names.formatted(.list(type: .and)) : "\(names.count) folders"
+        return names.count <= 3 ? names.formatted(.list(type: .and)) : L("{0} folders", names.count)
     }
 }
 
@@ -954,7 +978,7 @@ private struct ExampleChip: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help("Search for “\(text)”")
+        .help(L("Search for “{0}”", text))
         .onHover { inside in
             hovering = inside
             if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }

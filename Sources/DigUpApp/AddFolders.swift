@@ -54,7 +54,7 @@ final class AddFoldersController {
                                   add: { [weak self] in self?.add() })
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: view))
         sheet.styleMask = [.titled]
-        sheet.title = code ? "Code Folders" : "Add Folders"
+        sheet.title = code ? L("Code Folders") : L("Add Folders")
         self.sheet = sheet
         choices.startEstimates()
         log("add folders: \(choices.rows.count) to choose from")
@@ -105,17 +105,17 @@ private struct AddFoldersView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
                 if choices.code {
-                    StepTitle(title: "Search your code",
-                              subtitle: "Pick the folders that hold your projects; open one to pick among its repos. "
-                                  + "DigUp reads each once, then what changes. Code is searched on its own: type "
-                                  + "code: in the search panel.")
+                    StepTitle(title: L("Search your code"),
+                              subtitle: L("Pick the folders that hold your projects; open one to pick among its repos. ")
+                                  + L("DigUp reads each once, then what changes. Code is searched on its own: type ")
+                                  + L("code: in the search panel."))
                 } else {
-                    StepTitle(title: "Add folders to search",
-                              subtitle: "DigUp reads a new folder once, then keeps up with what changes in it. "
-                                  + "Open a folder to pick some of its subfolders.")
+                    StepTitle(title: L("Add folders to search"),
+                              subtitle: L("DigUp reads a new folder once, then keeps up with what changes in it. ")
+                                  + L("Open a folder to pick some of its subfolders."))
                 }
                 ScrollView {
-                    FolderList(choices: choices, addTitle: "Choose Another Folder…", add: pick)
+                    FolderList(choices: choices, addTitle: L("Choose Another Folder…"), add: pick)
                     if choices.code { CodeFolderNote().padding(.top, 8) }
                 }
                 .scrollBounceBehavior(.basedOnSize)
@@ -130,9 +130,9 @@ private struct AddFoldersView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Button("Cancel", action: cancel)
+                Button(L("Cancel"), action: cancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Add", action: add)
+                Button(L("Add"), action: add)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!choices.changesSomething)
             }
@@ -144,15 +144,15 @@ private struct AddFoldersView: View {
     }
 
     private var summary: String {
-        guard choices.changesSomething else { return "Check the folders to add" }
-        guard choices.estimatesDone else { return "Looking at the folders…" }
-        let time = choices.totalSeconds < 1 ? "under a second" : "about \(roughDuration(choices.totalSeconds))"
+        guard choices.changesSomething else { return L("Check the folders to add") }
+        guard choices.estimatesDone else { return L("Looking at the folders…") }
+        let time = choices.totalSeconds < 1 ? L("under a second") : L("about {0}", roughDuration(choices.totalSeconds))
         if choices.code {
-            return "Adds \(time) of indexing and \(roughBytes(choices.totalBytes))"
+            return L("Adds {0} of indexing and {1}", time, roughBytes(choices.totalBytes))
         }
         let later = choices.totalLaterSeconds
-        return "Adds \(time) of indexing"
-            + (later >= 30 ? ", and \(roughDuration(later)) more for long files" : "")
+        return L("Adds {0} of indexing", time)
+            + (later >= 30 ? L(", and {0} more for long files", roughDuration(later)) : "")
     }
 }
 
@@ -160,8 +160,8 @@ private struct AddFoldersView: View {
 struct CodeFolderNote: View {
     var body: some View {
         Label {
-            Text("Code search reads source files, notebooks and a repo's own docs. It skips what git ignores, vendored "
-                 + "and generated code, data files, and anything that looks like a key or a password.")
+            Text(L("Code search reads source files, notebooks and a repo's own docs. It skips what git ignores, vendored ")
+                 + L("and generated code, data files, and anything that looks like a key or a password."))
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "info.circle")

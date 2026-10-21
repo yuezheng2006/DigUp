@@ -5,6 +5,9 @@
 // behavior.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod i18n;
+use i18n::tr;
+
 mod clipboard;
 mod code;
 mod editors;
@@ -1607,17 +1610,17 @@ fn shortcut_text(accelerator: &str) -> String {
 // MARK: The tray
 
 fn make_tray(app: &AppHandle, shell: &Arc<Shell>) -> tauri::Result<()> {
-    let status = MenuItem::with_id(app, "status", "Starting…", false, None::<&str>)?;
+    let status = MenuItem::with_id(app, "status", tr("Starting…", "正在启动…"), false, None::<&str>)?;
     // The shortcut beside Search… only where DigUp grabs it: elsewhere the desktop has it, maybe changed there.
     let accelerator = (shell.shortcut == Method::Grab).then(|| shell.hotkey());
-    let search = MenuItem::with_id(app, "search", "Search…", true, accelerator.as_deref())?;
-    let open = MenuItem::with_id(app, "open", "Open DigUp", true, None::<&str>)?;
-    let folders = MenuItem::with_id(app, "folders", "Choose Folders…", true, None::<&str>)?;
-    let index = MenuItem::with_id(app, "index", "Index Now", true, None::<&str>)?;
-    let pause = MenuItem::with_id(app, "pause", "Pause Indexing", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
-    let check = MenuItem::with_id(app, "check", "Check for Updates…", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit DigUp", true, None::<&str>)?;
+    let search = MenuItem::with_id(app, "search", tr("Search…", "搜索…"), true, accelerator.as_deref())?;
+    let open = MenuItem::with_id(app, "open", tr("Open DigUp", "打开 DigUp"), true, None::<&str>)?;
+    let folders = MenuItem::with_id(app, "folders", tr("Choose Folders…", "选择文件夹…"), true, None::<&str>)?;
+    let index = MenuItem::with_id(app, "index", tr("Index Now", "立即索引"), true, None::<&str>)?;
+    let pause = MenuItem::with_id(app, "pause", tr("Pause Indexing", "暂停索引"), true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", tr("Settings…", "设置…"), true, None::<&str>)?;
+    let check = MenuItem::with_id(app, "check", tr("Check for Updates…", "检查更新…"), true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", tr("Quit DigUp", "退出 DigUp"), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
@@ -1743,7 +1746,7 @@ fn changed(app: &AppHandle) {
         let _ = index.set_enabled(folders && snapshot["busy"] == false);
     }
     if let Some(pause) = shell.pause_item.lock().unwrap().as_ref() {
-        let _ = pause.set_text(if snapshot["paused"] == true { "Resume Indexing" } else { "Pause Indexing" });
+        let _ = pause.set_text(if snapshot["paused"] == true { tr("Resume Indexing", "继续索引") } else { tr("Pause Indexing", "暂停索引") });
         let _ = pause.set_enabled(folders);
     }
     update_line(app, &shell);

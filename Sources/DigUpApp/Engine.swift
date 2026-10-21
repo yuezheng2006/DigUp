@@ -966,6 +966,39 @@ nonisolated final class Engine: @unchecked Sendable {
         }
     }
 
+    /// WeChat uses this same serial model worker; batches yield between groups so typing stays responsive.
+    func chatEmbeddingSource() async -> String? {
+        await withCheckedContinuation { continuation in
+            encoderQueue.async { [self] in
+                let source = runningEncoder()?.info.vectorSource
+                scheduleIdleExit()
+                continuation.resume(returning: source)
+            }
+        }
+    }
+
+    func embedChatDocuments(_ documents: [String]) async -> [QueryVector]? {
+        await withCheckedContinuation { continuation in
+            encoderQueue.async { [self] in
+                guard let worker = runningEncoder() else { continuation.resume(returning: nil); return }
+                defer { scheduleIdleExit() }
+                do {
+                    let vectors = try worker.embedTexts(documents)
+                    continuation.resume(returning: vectors.map { QueryVector(values: $0, source: worker.info.vectorSource) })
+                } catch {
+                    stopEncoder()
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    func embedChatQuery(_ text: String) async -> QueryVector? {
+        await withCheckedContinuation { continuation in
+            encoderQueue.async { [self] in continuation.resume(returning: vector(for: text, code: false)) }
+        }
+    }
+
     private func vector(for text: String, code: Bool) -> QueryVector? {
         let key = Self.cacheKey(text, code: code)
         if let cached = vectorCache[key] { return cached }

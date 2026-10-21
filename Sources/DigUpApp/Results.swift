@@ -69,7 +69,7 @@ struct ResultRow: Identifiable, Equatable {
     var place: String? {
         guard let loc else { return nil }
         switch segment {
-        case .page, .pageImage: return "p. \(Int(loc))"
+        case .page, .pageImage: return L("p. {0}", Int(loc))
         case .frame: return Self.clock(loc)
         case .audio: return kind == .video ? "♪ \(Self.clock(loc))" : Self.clock(loc)
         case .lines: return Int(loc) == Int(locEnd ?? loc) ? "L\(Int(loc))" : "L\(Int(loc))–\(Int(locEnd ?? loc))"
@@ -83,8 +83,8 @@ struct ResultRow: Identifiable, Equatable {
         guard let loc else { return nil }
         let (first, last) = (Int(loc), Int(locEnd ?? loc))
         switch segment {
-        case .lines: return first == last ? "line \(first)" : "lines \(first)–\(last)"
-        case .cells: return first == last ? "cell \(first)" : "cells \(first)–\(last)"
+        case .lines: return first == last ? L("line {0}", first) : L("lines {0}–{1}", first, last)
+        case .cells: return first == last ? L("cell {0}", first) : L("cells {0}–{1}", first, last)
         default: return nil
         }
     }
@@ -96,19 +96,19 @@ struct ResultRow: Identifiable, Equatable {
 
     /// Why it's here, in a few words: "Matches the picture", "Matches the frame at 0:06".
     var reason: String {
-        guard matchedMeaning else { return matchedWords ? "Has your words" : "Matches its name" }
+        guard matchedMeaning else { return matchedWords ? L("Has your words") : L("Matches its name") }
         let place = loc.map(Self.clock) ?? ""
-        let page = loc.map { "page \(Int($0))" } ?? "a page"
+        let page = loc.map { L("page {0}", Int($0)) } ?? L("a page")
         switch segment {
-        case .image: return kind == .screenshot ? "Matches what's on screen" : "Matches the picture"
-        case .ocr: return "Matches the text in it"
-        case .frame: return "Matches the frame at \(place)"
-        case .audio: return kind == .video ? "Matches the sound at \(place)" : "Matches what's heard at \(place)"
-        case .page: return "Matches the text on \(page)"
-        case .pageImage: return "Matches \(page)"
-        case .chunk: return "Matches its text"
-        case .name: return "Matches its name"
-        case .lines, .cells: return "Matches \(span ?? "the code")"
+        case .image: return kind == .screenshot ? L("Matches what's on screen") : L("Matches the picture")
+        case .ocr: return L("Matches the text in it")
+        case .frame: return L("Matches the frame at {0}", place)
+        case .audio: return kind == .video ? L("Matches the sound at {0}", place) : L("Matches what's heard at {0}", place)
+        case .page: return L("Matches the text on {0}", page)
+        case .pageImage: return L("Matches {0}", page)
+        case .chunk: return L("Matches its text")
+        case .name: return L("Matches its name")
+        case .lines, .cells: return L("Matches {0}", span ?? L("the code"))
         }
     }
 
@@ -118,9 +118,9 @@ struct ResultRow: Identifiable, Equatable {
         if kind == .code {
             var parts = [CodeExtractor.language(of: url.path)]
             if let cells = info["cells"].flatMap(Int.init) {
-                parts.append(cells == 1 ? "1 cell" : "\(cells) cells")
+                parts.append(cells == 1 ? L("1 cell") : L("{0} cells", cells))
             } else if let lines = info["lines"].flatMap(Int.init) {
-                parts.append(lines == 1 ? "1 line" : "\(lines.formatted()) lines")
+                parts.append(lines == 1 ? L("1 line") : L("{0} lines", lines.formatted()))
             }
             parts.append(modified.formatted(date: .abbreviated, time: .omitted))
             if size > 0 { parts.append(bytes(size)) }
@@ -131,9 +131,9 @@ struct ResultRow: Identifiable, Equatable {
         // A long file still being read (`Indexer.finishLongFiles`): what isn't read yet can't match.
         let readTo = info["read_to"].flatMap(Int.init)
         if let pages = info["pages"].flatMap(Int.init) {
-            parts.append((pages == 1 ? "1 page" : "\(pages) pages") + (readTo.map { ", \($0) read so far" } ?? ""))
+            parts.append((pages == 1 ? L("1 page") : L("{0} pages", pages)) + (readTo.map { L(", {0} read so far", $0) } ?? ""))
         } else if readTo != nil {
-            parts.append("partly read so far")
+            parts.append(L("partly read so far"))
         }
         if let duration { parts.append(Self.clock(duration)) }
         if size > 0 { parts.append(bytes(size)) }
@@ -169,12 +169,12 @@ enum ResultGroupKind: CaseIterable {
 
     var title: String {
         switch self {
-        case .screenshots: "Screenshots"
-        case .images: "Images"
-        case .documents: "Documents"
-        case .video: "Video"
-        case .audio: "Audio"
-        case .code: "Code"
+        case .screenshots: L("Screenshots")
+        case .images: L("Images")
+        case .documents: L("Documents")
+        case .video: L("Video")
+        case .audio: L("Audio")
+        case .code: L("Code")
         }
     }
 
@@ -221,12 +221,12 @@ struct ResultSet: Equatable {
 
     init() {}
 
-    init(_ hits: [SearchHit], query: String = "", rowsPerGroup: Int = .max) {
-        let strong = Searcher.strongCount(hits)
+    init(_ hits: [SearchHit], query: String = "", rowsPerGroup: Int = .max, kinds: Set<FileKind>? = nil) {
+        let partition = Searcher.partition(hits, kinds: kinds)
         let terms = Searcher.terms(query)
         var order: [ResultGroupKind] = []
         var byGroup: [ResultGroupKind: [ResultRow]] = [:]
-        ranked = hits.prefix(strong).map { ResultRow($0, terms: terms) }
+        ranked = partition.strong.map { ResultRow($0, terms: terms) }
         for row in ranked {
             let group = ResultGroupKind(row.kind)
             if byGroup[group] == nil { order.append(group) }
@@ -235,7 +235,7 @@ struct ResultSet: Equatable {
         groups = order.map {
             ResultGroup(kind: $0, rows: Array(byGroup[$0]!.prefix(rowsPerGroup)), total: byGroup[$0]!.count)
         }
-        weaker = hits.dropFirst(strong).map { ResultRow($0, terms: terms) }
+        weaker = partition.weaker.map { ResultRow($0, terms: terms) }
     }
 
     var strongRows: [ResultRow] { groups.flatMap(\.rows) }
@@ -246,13 +246,13 @@ struct ResultSet: Equatable {
 extension FileKind {
     var title: String {
         switch self {
-        case .screenshot: "Screenshot"
-        case .image: "Image"
+        case .screenshot: L("Screenshot")
+        case .image: L("Image")
         case .pdf: "PDF"
-        case .doc: "Document"
-        case .audio: "Audio"
-        case .video: "Video"
-        case .code: "Code"
+        case .doc: L("Document")
+        case .audio: L("Audio")
+        case .video: L("Video")
+        case .code: L("Code")
         }
     }
 

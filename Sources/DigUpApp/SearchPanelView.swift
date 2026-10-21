@@ -30,12 +30,12 @@ struct SearchPanelView: View {
                 .font(.system(size: controller.isCode ? 17 : 20, weight: .semibold))
                 .foregroundStyle(Brand.gradient)
                 .frame(width: 24)
-                .help(controller.isCode ? "Searching your code" : "")
+                .help(controller.isCode ? L("Searching your code") : "")
             // With code search on, one example is code's: nothing else in the panel shows "code:".
             SearchField(text: $controller.query, fontSize: 22,
                         placeholder: controller.model.hasCode
-                            ? "Describe it: “zebra in a video”, “code: retry with backoff”…"
-                            : "Describe it: “payment error screenshot”, “zebra in a video”…") {
+                            ? L("Describe it: “zebra in a video”, “code: retry with backoff”…")
+                            : L("Describe it: “payment error screenshot”, “zebra in a video”…")) {
                 controller.field = $0
             }
             if controller.phase == .words, controller.encoder == .starting {
@@ -61,18 +61,18 @@ struct SearchPanelView: View {
         } else if controller.results.isEmpty {
             VStack(spacing: 8) {
                 if controller.phase == .words {
-                    Text("Searching…").foregroundStyle(.secondary)
+                    Text(L("Searching…")).foregroundStyle(.secondary)
                 } else if !controller.model.hasFolders {
-                    Text("No folders chosen yet").font(.system(size: 15, weight: .semibold))
-                    Text("DigUp only searches the folders you pick.").foregroundStyle(.secondary)
-                    Button("Choose Folders…") { controller.chooseFolders() }
+                    Text(L("No folders chosen yet")).font(.system(size: 15, weight: .semibold))
+                    Text(L("DigUp only searches the folders you pick.")).foregroundStyle(.secondary)
+                    Button(L("Choose Folders…")) { controller.chooseFolders() }
                         .padding(.top, 4)
                 } else if controller.isCode {
-                    Text("No good matches in your code").font(.system(size: 15, weight: .semibold))
-                    Text("Try saying what the code does, or a name that's in it.").foregroundStyle(.secondary)
+                    Text(L("No good matches in your code")).font(.system(size: 15, weight: .semibold))
+                    Text(L("Try saying what the code does, or a name that's in it.")).foregroundStyle(.secondary)
                 } else {
-                    Text("No good matches").font(.system(size: 15, weight: .semibold))
-                    Text("Try what you'd see or hear in it, or words you remember from it.")
+                    Text(L("No good matches")).font(.system(size: 15, weight: .semibold))
+                    Text(L("Try what you'd see or hear in it, or words you remember from it."))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -121,31 +121,31 @@ struct SearchPanelView: View {
     private var keysText: String {
         let row = controller.selectedRow
         if let row, row.kind == .code {
-            let line = row.segment == .lines ? " at line \(row.codeLine)" : ""
-            return "↩ \(row.openTitle)\(line)   ⌘↩ Reveal   ␣ Quick Look   ⌘C Copy"
+            let line = row.segment == .lines ? L(" at line {0}", row.codeLine) : ""
+            return L("↩ {0}{1}   ⌘↩ Reveal   ␣ Quick Look   ⌘C Copy", row.openTitle, line)
         }
-        let place = row?.jump.map { " at \($0)" } ?? ""
-        return "↩ \(row?.openTitle ?? "Open")   ⌘↩ Reveal   ␣ Quick Look\(place)   ⌘C Copy"
+        let place = row?.jump.map { L(" at {0}", $0) } ?? ""
+        return L("↩ {0}   ⌘↩ Reveal   ␣ Quick Look{1}   ⌘C Copy", row?.openTitle ?? L("Open"), place)
     }
 
     private var statusText: String {
         if let note = controller.note { return note }
         switch controller.phase {
         case .words:
-            return controller.encoder == .starting ? "Matching words; meaning search is warming up…" : "Matching words…"
+            return controller.encoder == .starting ? L("Matching words; meaning search is warming up…") : L("Matching words…")
         case .wordsOnly:
-            return controller.model.meaningUnavailable ?? "Words only: meaning search isn't available"
+            return controller.model.meaningUnavailable ?? L("Words only: meaning search isn't available")
         case .codeHint, .codeOff:
-            return controller.phase == .codeOff ? "Code search is off" : "Searching your code"
+            return controller.phase == .codeOff ? L("Code search is off") : L("Searching your code")
         case .meaning, .empty:
             if controller.isCode, let indexing = controller.model.status.code.indexing, indexing.total > 0 {
-                return "Still reading code (\(Int(Double(indexing.done) / Double(indexing.total) * 100))%): some isn't in yet"
+                return L("Still reading code ({0}%): some isn't in yet", Int(Double(indexing.done) / Double(indexing.total) * 100))
             }
             if !controller.isCode, let caveat = controller.model.resultsCaveat { return caveat }
             let count = controller.results.strongRows.count
             let weaker = controller.results.weaker.count
-            return (count == 1 ? "1 result" : "\(count) results") + (controller.isCode ? " in your code" : "")
-                + (weaker > 0 ? " · \(weaker) weaker" : "")
+            return (count == 1 ? L("1 result") : L("{0} results", count)) + (controller.isCode ? L(" in your code") : "")
+                + (weaker > 0 ? L(" · {0} weaker", weaker) : "")
         }
     }
 }
@@ -173,14 +173,14 @@ private struct ResultList: View {
                             Button {
                                 controller.openInWindow(group.kind)
                             } label: {
-                                Text("Show all \(group.total) \(group.kind.title.lowercased())…")
+                                Text(L("Show all {0} {1}…", group.total, group.kind.title.lowercased()))
                                     .font(.system(size: 11.5, weight: .medium))
                                     .foregroundStyle(Color.accentColor)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 3)
                             }
                             .buttonStyle(.plain)
-                            .help("Open them in the DigUp window (⌘O shows everything)")
+                            .help(L("Open them in the DigUp window (⌘O shows everything)"))
                         }
                     }
                     if !controller.results.weaker.isEmpty {
@@ -284,7 +284,7 @@ private struct WeakerRow: View {
             Image(systemName: "chevron.right")
                 .font(.system(size: 9.5, weight: .bold))
                 .rotationEffect(.degrees(expanded ? 90 : 0))
-            Text(expanded ? "Weaker matches" : "\(count) weaker \(count == 1 ? "match" : "matches")")
+            Text(expanded ? L("Weaker matches") : L("{0} weaker {1}", count, count == 1 ? L("match") : L("matches")))
                 .font(.system(size: 11.5, weight: .medium))
             Spacer()
         }
@@ -307,10 +307,10 @@ private struct WeakerExplainer: View {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 30, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text(expanded ? "Weaker matches" : "\(count) weaker \(count == 1 ? "match" : "matches")")
+            Text(expanded ? L("Weaker matches") : L("{0} weaker {1}", count, count == 1 ? L("match") : L("matches")))
                 .font(.system(size: 14, weight: .semibold))
-            Text("They match much less well than the results above. Press Return to "
-                 + (expanded ? "fold them away." : "show them."))
+            Text(L("They match much less well than the results above. Press Return to ")
+                 + (expanded ? L("fold them away.") : L("show them.")))
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -376,7 +376,7 @@ struct SearchField: NSViewRepresentable {
         field.cell?.isScrollable = true
         field.cell?.wraps = false
         field.delegate = context.coordinator
-        field.setAccessibilityLabel("Search")
+        field.setAccessibilityLabel(L("Search"))
         onMake(field)
         return field
     }
@@ -429,7 +429,7 @@ final class FocusReportingField: NSTextField {
 struct FileDragArea: NSViewRepresentable {
     let url: URL
     /// "Open at 0:06": what double-click and the menu's first item do.
-    var openTitle = "Open"
+    var openTitle = L("Open")
     let onClick: () -> Void
     let onOpen: () -> Void
 
@@ -445,7 +445,7 @@ struct FileDragArea: NSViewRepresentable {
 
 final class FileDragView: NSView, NSDraggingSource {
     var url: URL?
-    var openTitle = "Open"
+    var openTitle = L("Open")
     var onClick: () -> Void = {}
     var onOpen: () -> Void = {}
     private var mouseDownEvent: NSEvent?
@@ -487,13 +487,13 @@ final class FileDragView: NSView, NSDraggingSource {
         onClick()
         let menu = NSMenu()
         menu.addItem(ActionMenuItem(openTitle) { [onOpen] in onOpen() })
-        menu.addItem(ActionMenuItem("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) })
+        menu.addItem(ActionMenuItem(L("Show in Finder")) { NSWorkspace.shared.activateFileViewerSelecting([url]) })
         menu.addItem(.separator())
-        menu.addItem(ActionMenuItem("Copy") {
+        menu.addItem(ActionMenuItem(L("Copy")) {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.writeObjects([url as NSURL])
         })
-        menu.addItem(ActionMenuItem("Copy Path") {
+        menu.addItem(ActionMenuItem(L("Copy Path")) {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.path, forType: .string)
         })
@@ -511,8 +511,8 @@ final class FileDragView: NSView, NSDraggingSource {
 private struct CodeHint: View {
     let controller: SearchPanelController
 
-    static let examples = ["code: retry a request with backoff", "code: where the settings are saved",
-                           "code: parse the command line options"]
+    static let examples = [L("code: retry a request with backoff"), L("code: where the settings are saved"),
+                           L("code: parse the command line options")]
 
     var body: some View {
         VStack(spacing: 10) {
@@ -520,17 +520,17 @@ private struct CodeHint: View {
                 .font(.system(size: 26, weight: .medium))
                 .foregroundStyle(Brand.gradient)
             if controller.phase == .codeOff {
-                Text("Code search is off").font(.system(size: 15, weight: .semibold))
-                Text("DigUp can find code by what it does, in the folders you pick. Code gets an index of its own "
-                     + "and never shows up in other searches.")
+                Text(L("Code search is off")).font(.system(size: 15, weight: .semibold))
+                Text(L("DigUp can find code by what it does, in the folders you pick. Code gets an index of its own ")
+                     + L("and never shows up in other searches."))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
-                Button("Choose Code Folders…") { controller.setUpCodeSearch() }
+                Button(L("Choose Code Folders…")) { controller.setUpCodeSearch() }
                     .padding(.top, 4)
             } else {
-                Text("Search your code").font(.system(size: 15, weight: .semibold))
-                Text("Say what the code does, or type a name that's in it.").foregroundStyle(.secondary)
+                Text(L("Search your code")).font(.system(size: 15, weight: .semibold))
+                Text(L("Say what the code does, or type a name that's in it.")).foregroundStyle(.secondary)
                 VStack(spacing: 6) {
                     ForEach(Self.examples, id: \.self) { example in
                         Button { controller.tryExample(example) } label: {

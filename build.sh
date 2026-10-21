@@ -39,6 +39,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$BIN_DIR/DigUpApp" "$APP/Contents/MacOS/$APP_NAME"
 # The indexing helper lives in Helpers/: next to DigUp in MacOS/ it would collide on a case-insensitive disk.
 cp "$BIN_DIR/digup" "$APP/Contents/Helpers/digup"
+cp -R "$BIN_DIR/DigUp_DigUpApp.bundle" "$APP/Contents/Resources/"
+cp -R Resources/zh-Hans.lproj "$APP/Contents/Resources/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 xcrun actool --compile "$APP/Contents/Resources" --platform macosx --target-device mac --minimum-deployment-target 14.0 \
   --app-icon AppIcon --output-partial-info-plist "$(mktemp -d)/AppIcon.plist" --enable-on-demand-resources NO \

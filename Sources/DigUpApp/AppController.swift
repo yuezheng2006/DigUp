@@ -19,6 +19,7 @@ final class AppController {
     private(set) var panel: SearchPanelController!
     private(set) var searchWindow: SearchWindowController!
     private(set) var settingsWindow: SettingsWindowController!
+    private(set) var wechatWindow: WeChatWindowController!
     private(set) var statusMenu: StatusMenuController!
     private(set) var onboarding: OnboardingController?
     private var observers: [NSObjectProtocol] = []
@@ -60,9 +61,11 @@ final class AppController {
         panel = SearchPanelController(app: self)
         searchWindow = SearchWindowController(app: self)
         settingsWindow = SettingsWindowController(app: self)
+        wechatWindow = WeChatWindowController(app: self)
         statusMenu = StatusMenuController(model: model)
         statusMenu.onSearch = { [weak self] in self?.panel.show() }
         statusMenu.onOpenWindow = { [weak self] in self?.showSearchWindow() }
+        statusMenu.onWeChat = { [weak self] in self?.wechatWindow.show() }
         statusMenu.onSettings = { [weak self] in self?.showSettings() }
         statusMenu.onChooseFolders = { [weak self] in self?.chooseFolders() }
         statusMenu.onPauseChanged = { [weak self] paused in self?.engine.setPaused(paused) }
@@ -202,7 +205,7 @@ final class AppController {
     }
 
     /// Asks for folders with the standard open panel (as a sheet when there's a window).
-    func pickFolders(for window: NSWindow?, prompt: String = "Add", then done: @escaping ([URL]) -> Void) {
+    func pickFolders(for window: NSWindow?, prompt: String = L("Add"), then done: @escaping ([URL]) -> Void) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

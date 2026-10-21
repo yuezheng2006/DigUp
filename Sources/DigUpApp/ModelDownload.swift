@@ -69,15 +69,15 @@ final class ModelDownload {
     /// "42% · about 1 min left", "Checking the download…", "Waiting for the network…"
     var progressText: String {
         switch phase {
-        case .needed: return "Not downloaded yet"
+        case .needed: return L("Not downloaded yet")
         case .downloading:
             let percent = "\(Int((fraction * 100).rounded(.down)))%"
             guard let left = secondsLeft else { return percent }
-            return percent + " · " + (left < 50 ? "less than a minute left" : "about \(roughDuration(left)) left")
-        case .verifying: return "Checking the download…"
-        case .retrying: return "Waiting for the network…"
+            return percent + " · " + (left < 50 ? L("less than a minute left") : L("about {0} left", roughDuration(left)))
+        case .verifying: return L("Checking the download…")
+        case .retrying: return L("Waiting for the network…")
         case .failed(let message): return message
-        case .ready: return "Ready"
+        case .ready: return L("Ready")
         }
     }
 
@@ -108,13 +108,13 @@ final class ModelDownload {
             var folder = self.folder
             try folder.setResourceValues(values)
         } catch {
-            phase = .failed("Can't create \(tildePath(folder.path))")
+            phase = .failed(L("Can't create {0}", tildePath(folder.path)))
             log("model: can't create \(folder.path): \(error)")
             return
         }
         let needed = ModelFiles.missing(in: folder).reduce(0) { $0 + $1.bytes } - partialBytes(of: file) + 200_000_000
         if let free = freeSpace(), free < needed {
-            phase = .failed("Needs \(bytes(needed)) free on this disk")
+            phase = .failed(L("Needs {0} free on this disk", bytes(needed)))
             log("model: needs \(bytes(needed)) free, \(bytes(free)) is free")
             return
         }
@@ -158,7 +158,7 @@ final class ModelDownload {
         }, waiting: { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self, attempt == current else { return }
-                phase = .retrying("Waiting for a network connection")
+                phase = .retrying(L("Waiting for a network connection"))
                 log("model: waiting for a network connection")
             }
         }, done: { [weak self] outcome in
@@ -214,12 +214,12 @@ final class ModelDownload {
                         next()
                     } else if chosen.remove(file.name) != nil {
                         // Chosen by hand: say so, rather than download what the network may block.
-                        phase = .failed("The chosen \(file.name) isn't the right file")
+                        phase = .failed(L("The chosen {0} isn't the right file", file.name))
                     } else {
                         failedChecks += 1
                         received = bytesOnDisk()
                         if failedChecks >= 2 {
-                            phase = .failed("The download was damaged twice. Try again later.")
+                            phase = .failed(L("The download was damaged twice. Try again later."))
                         } else {
                             next()
                         }
@@ -257,12 +257,12 @@ final class ModelDownload {
     /// afterwards downloads as usual.
     func use(_ urls: [URL]) {
         var picked: [(file: ModelFiles.File, url: URL)] = []
-        var problem = "Those aren't the model's files"
+        var problem = L("Those aren't the model's files")
         for url in urls {
             let size = FileFetcher.size(of: url)
             guard let file = ModelFiles.all.first(where: { $0.bytes == size }) else {
                 if let named = ModelFiles.all.first(where: { $0.name == url.lastPathComponent }) {
-                    problem = "The chosen \(named.name) is \(bytes(size)), not \(bytes(named.bytes))"
+                    problem = L("The chosen {0} is {1}, not {2}", named.name, bytes(size), bytes(named.bytes))
                 }
                 continue
             }
@@ -304,8 +304,8 @@ final class ModelDownload {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.prompt = "Use"
-        panel.message = "Choose the model files you downloaded: "
+        panel.prompt = L("Use")
+        panel.message = L("Choose the model files you downloaded: ")
             + ModelFiles.all.map(\.name).joined(separator: " and ") + "."
         let finish = { [weak self] (response: NSApplication.ModalResponse) in
             guard response == .OK else { return }

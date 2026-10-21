@@ -53,6 +53,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let menu = NSMenu()
     var onSearch: () -> Void = {}
     var onOpenWindow: () -> Void = {}
+    var onWeChat: () -> Void = {}
     var onSettings: () -> Void = {}
     var onChooseFolders: () -> Void = {}
     var onPauseChanged: (Bool) -> Void = { _ in }
@@ -105,39 +106,42 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(header)
         menu.addItem(.separator())
         if let version = model.updateAvailable {
-            menu.addItem(ActionMenuItem("Update to DigUp \(version)…") { [weak self] in self?.onCheckForUpdates() })
+            menu.addItem(ActionMenuItem(L("Update to DigUp {0}…", version)) { [weak self] in self?.onCheckForUpdates() })
             menu.addItem(.separator())
         }
 
         if !model.hasFolders {
-            menu.addItem(ActionMenuItem("Choose Folders to Search…") { [weak self] in self?.onChooseFolders() })
+            menu.addItem(ActionMenuItem(L("Choose Folders to Search…")) { [weak self] in self?.onChooseFolders() })
         }
-        let search = ActionMenuItem("Search…") { [weak self] in self?.onSearch() }
+        let search = ActionMenuItem(L("Search…")) { [weak self] in self?.onSearch() }
         if let hotkey = model.hotkey, let (key, modifiers) = hotkey.menuEquivalent {
             search.keyEquivalent = key
             search.keyEquivalentModifierMask = modifiers
         }
         menu.addItem(search)
-        menu.addItem(ActionMenuItem("Open DigUp") { [weak self] in self?.onOpenWindow() })
+        if WeChatAvailability.enabled {
+            menu.addItem(ActionMenuItem(L("WeChat Messages…")) { [weak self] in self?.onWeChat() })
+        }
+        menu.addItem(ActionMenuItem(L("Open DigUp")) { [weak self] in self?.onOpenWindow() })
         if model.hasFolders {
             menu.addItem(.separator())
             let paused = model.status.paused
-            menu.addItem(ActionMenuItem(paused ? "Resume Indexing" : "Pause Indexing") { [weak self] in
+            menu.addItem(ActionMenuItem(paused ? L("Resume Indexing") : L("Pause Indexing")) { [weak self] in
                 self?.onPauseChanged(!paused)
             })
         }
         switch model.download.phase {
         case .failed, .needed:
-            menu.addItem(ActionMenuItem("Download the Model") { [weak self] in self?.model.download.start() })
+            menu.addItem(ActionMenuItem(L("Download the Model")) { [weak self] in self?.model.download.start() })
         default:
             break
         }
         menu.addItem(.separator())
-        menu.addItem(ActionMenuItem("Settings…", key: ",") { [weak self] in self?.onSettings() })
+        menu.addItem(ActionMenuItem(L("Settings…"), key: ",") { [weak self] in self?.onSettings() })
         if model.updateAvailable == nil {
-            menu.addItem(ActionMenuItem("Check for Updates…") { [weak self] in self?.onCheckForUpdates() })
+            menu.addItem(ActionMenuItem(L("Check for Updates…")) { [weak self] in self?.onCheckForUpdates() })
         }
-        menu.addItem(ActionMenuItem("Quit DigUp", key: "q") { NSApp.terminate(nil) })
+        menu.addItem(ActionMenuItem(L("Quit DigUp"), key: "q") { NSApp.terminate(nil) })
     }
 
     /// The menu as text, for the -debugMenu launch argument (menus can't be clicked from a script).
@@ -189,13 +193,13 @@ struct MenuStatusView: View {
     private var detail: String? {
         if model.download.isActive { return model.download.progressText }
         if case .failed(let message) = model.download.phase { return message }
-        guard model.hasFolders else { return "Pick the folders it should search." }
+        guard model.hasFolders else { return L("Pick the folders it should search.") }
         let missing = Set(model.status.missingRoots), unreadable = Set(model.status.unreadableRoots)
         let names = model.settings.roots.map { root in
-            root.lastPathComponent + (missing.contains(root.path) ? " (not connected)"
-                                      : unreadable.contains(root.path) ? " (no access)" : "")
+            root.lastPathComponent + (missing.contains(root.path) ? L(" (not connected)")
+                                      : unreadable.contains(root.path) ? L(" (no access)") : "")
         }
-        return "In " + names.joined(separator: ", ")
+        return L("In ") + names.joined(separator: ", ")
     }
 }
 

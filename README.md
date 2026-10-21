@@ -1,3 +1,5 @@
+> This fork adds a Simplified Chinese UI. See [中文说明](README.zh-CN.md) for language selection, builds, and fork-only manual updates. The original project documentation follows.
+
 <p align="center"><img src="docs/logo.png" width="96" alt=""></p>
 
 <h1 align="center">DigUp</h1>
