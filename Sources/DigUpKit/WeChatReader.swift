@@ -12,8 +12,10 @@ public struct WeChatSession: Identifiable, Sendable, Equatable {
     public let id: String
     public let name: String
     public let kind: Kind
-    public init(id: String, name: String, chatType: String? = nil) {
+    public let lastMessageTimestamp: TimeInterval?
+    public init(id: String, name: String, chatType: String? = nil, lastMessageTimestamp: TimeInterval? = nil) {
         self.id = id; self.name = name
+        self.lastMessageTimestamp = lastMessageTimestamp.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         // Official accounts take precedence over unreliable group flags; display names are never classifiers.
         if id.hasPrefix("gh_") || chatType == "official_account" { kind = .official }
         else if id.hasSuffix("@chatroom") { kind = .group }
@@ -125,13 +127,22 @@ public struct WeChatReader: Sendable {
     public func sessions() throws -> [WeChatSession] {
         let (rows, _) = try Self.rows(run(["sessions", "--limit", "200", "--json", "--with-meta"]), key: "sessions")
         var seen = Set<String>()
-        return try rows.compactMap { row in
+        let sessions: [WeChatSession] = try rows.compactMap { row in
             guard let id = row["username"] as? String, !id.isEmpty, !id.hasPrefix("-"),
                   seen.insert(id).inserted else { throw WeChatReadError.invalidResponse }
             let name = row["chat"] as? String ?? row["display_name"] as? String ?? row["name"] as? String ?? row["display"] as? String ?? id
             // Folded inboxes aggregate other conversations; they are not readable chat identities.
             if row["chat_type"] as? String == "folded" { return nil }
-            return WeChatSession(id: id, name: name, chatType: row["chat_type"] as? String)
+            let stamp = row["timestamp"] as? NSNumber
+            let session = WeChatSession(id: id, name: name, chatType: row["chat_type"] as? String,
+                                        lastMessageTimestamp: stamp.flatMap { CFGetTypeID($0) == CFBooleanGetTypeID() ? nil : $0.doubleValue })
+            return session.kind == .official ? nil : session
+        }
+        // Latest message first, independent of the reader's order. Missing timestamps go last;
+        // stable identity breaks ties so a refresh does not reshuffle equally recent conversations.
+        return sessions.sorted {
+            let lhs = $0.lastMessageTimestamp ?? 0, rhs = $1.lastMessageTimestamp ?? 0
+            return lhs == rhs ? $0.id < $1.id : lhs > rhs
         }
     }
 

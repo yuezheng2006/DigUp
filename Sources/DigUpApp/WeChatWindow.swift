@@ -237,7 +237,6 @@ struct WeChatView: View {
                     Text(L("All conversations")).tag("all")
                     Text(L("Group chats")).tag("group")
                     Text(L("Personal chats")).tag("person")
-                    Text(L("Official accounts")).tag("official")
                     Text(L("Other conversations")).tag("other")
                 }.labelsHidden().padding(.horizontal, 12)
                 ScrollView {
@@ -248,13 +247,19 @@ struct WeChatView: View {
                                 state.selection = session.id; state.query = ""; state.read()
                             } label: {
                                 HStack(spacing: 8) {
-                                    Image(systemName: session.kind == .group ? "person.2" : session.kind == .official ? "megaphone" : session.kind == .person ? "person" : "bubble.left")
-                                        .frame(width: 20).foregroundStyle(.secondary)
+                                    Image(systemName: session.kind == .group ? "person.2.fill" : session.kind == .person ? "person.fill" : "bubble.left")
+                                        .frame(width: 20).foregroundStyle(session.kind == .group ? Color.accentColor : Color.secondary)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(session.name == session.id ? L("Unnamed conversation") : session.name)
                                             .lineLimit(2).multilineTextAlignment(.leading)
-                                        Text(L(session.kind == .group ? "Group chats" : session.kind == .official ? "Official accounts" : session.kind == .person ? "Personal chats" : "Other conversations"))
-                                            .font(.caption2).foregroundStyle(.secondary)
+                                        HStack(spacing: 4) {
+                                            Text(L(session.kind == .group ? "Group chats" : session.kind == .person ? "Personal chats" : "Other conversations"))
+                                            Spacer(minLength: 0)
+                                            if let timestamp = session.lastMessageTimestamp {
+                                                Text(Date(timeIntervalSince1970: timestamp), format: .dateTime.month(.twoDigits).day(.twoDigits).hour().minute())
+                                                    .lineLimit(1)
+                                            }
+                                        }.font(.caption2).foregroundStyle(.secondary)
                                     }
                                     Spacer(minLength: 0)
                                 }
