@@ -319,14 +319,12 @@ final class SearchModel {
             let vector = await engine.embedQuery(text)
             guard !Task.isCancelled, current == generation else { return }
             let all = await engine.search(text, vector: vector, prefixLast: false, limit: 120)
-            let shown = filter == nil ? all : await engine.search(text, vector: vector, prefixLast: false,
-                                                                    kinds: filter!.kinds, limit: 120)
             try? await Task.sleep(until: showAt, tolerance: .milliseconds(1), clock: .continuous)
             guard !Task.isCancelled, current == generation else { return }
             var counts: [ResultGroupKind: Int] = [:]
             for hit in all.prefix(Searcher.strongCount(all)) { counts[ResultGroupKind(hit.kind), default: 0] += 1 }
             self.counts = counts
-            results = ResultSet(shown, query: text)
+            results = ResultSet(all, query: text, kinds: filter?.kinds)
             showWeaker = false
             if !rows.contains(where: { $0.id == selection }) { selection = rows.first?.id }
             hasResults = true

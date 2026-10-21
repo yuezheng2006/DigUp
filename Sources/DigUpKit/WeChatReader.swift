@@ -181,10 +181,23 @@ public struct WeChatReader: Sendable {
         if original.starts(with: Data("wxgf".utf8)) {
             guard let ffmpeg = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
                 .first(where: { fm.isExecutableFile(atPath: $0) }) else { throw WeChatReadError.executable }
-            let decoded = folder.appendingPathComponent("preview.png")
+            let probe = URL(fileURLWithPath: ffmpeg).deletingLastPathComponent().appendingPathComponent("ffprobe").path
+            guard fm.isExecutableFile(atPath: probe) else { throw WeChatReadError.executable }
+            // Some wxgf images put a grayscale plane before the color frame. Taking frame zero
+            // unconditionally produces a valid but nearly white image, not the actual picture.
+            let metadata = try WeChatProcess.run(executable: probe, arguments: ["-v", "error", "-f", "hevc",
+                "-read_intervals", "%+#2", "-show_frames", "-show_entries", "frame=pix_fmt", "-of", "json", file.path])
+            let frames = (try JSONSerialization.jsonObject(with: metadata) as? [String: Any])?["frames"] as? [[String: Any]] ?? []
+            let candidates = Array(frames.prefix(2))
+            let chosen = candidates.firstIndex { frame in
+                guard let format = frame["pix_fmt"] as? String else { return false }
+                return !format.hasPrefix("gray")
+            } ?? 0
+            let pattern = folder.appendingPathComponent("preview-%02d.png")
             _ = try WeChatProcess.run(executable: ffmpeg, arguments: ["-v", "error", "-f", "hevc", "-i", file.path,
-                "-frames:v", "1", "-vf", "scale=1600:1600:force_original_aspect_ratio=decrease", decoded.path])
-            file = decoded
+                "-frames:v", String(chosen + 1), "-vf", "scale=1600:1600:force_original_aspect_ratio=decrease,format=rgba",
+                "-fps_mode", "passthrough", pattern.path])
+            file = folder.appendingPathComponent(String(format: "preview-%02d.png", chosen + 1))
         }
         return try boundedData(file)
     }
