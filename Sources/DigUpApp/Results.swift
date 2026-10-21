@@ -221,12 +221,12 @@ struct ResultSet: Equatable {
 
     init() {}
 
-    init(_ hits: [SearchHit], query: String = "", rowsPerGroup: Int = .max) {
-        let strong = Searcher.strongCount(hits)
+    init(_ hits: [SearchHit], query: String = "", rowsPerGroup: Int = .max, kinds: Set<FileKind>? = nil) {
+        let partition = Searcher.partition(hits, kinds: kinds)
         let terms = Searcher.terms(query)
         var order: [ResultGroupKind] = []
         var byGroup: [ResultGroupKind: [ResultRow]] = [:]
-        ranked = hits.prefix(strong).map { ResultRow($0, terms: terms) }
+        ranked = partition.strong.map { ResultRow($0, terms: terms) }
         for row in ranked {
             let group = ResultGroupKind(row.kind)
             if byGroup[group] == nil { order.append(group) }
@@ -235,7 +235,7 @@ struct ResultSet: Equatable {
         groups = order.map {
             ResultGroup(kind: $0, rows: Array(byGroup[$0]!.prefix(rowsPerGroup)), total: byGroup[$0]!.count)
         }
-        weaker = hits.dropFirst(strong).map { ResultRow($0, terms: terms) }
+        weaker = partition.weaker.map { ResultRow($0, terms: terms) }
     }
 
     var strongRows: [ResultRow] { groups.flatMap(\.rows) }
