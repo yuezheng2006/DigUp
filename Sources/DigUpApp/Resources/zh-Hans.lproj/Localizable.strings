@@ -518,3 +518,21 @@
 "Export cancelled" = "已取消导出";
 
 "Export failed. No partial file was saved." = "导出失败，未保存不完整文件。";
+
+"Export here" = "导出到此处";
+
+"Quick range" = "快捷时间";
+
+"Last week" = "最近一周";
+
+"Last two weeks" = "最近两周";
+
+"Last month" = "最近一个月";
+
+"Last six months" = "最近半年";
+
+"Choose a start date before the end date." = "请选择早于结束日期的开始日期。";
+
+"A folder with text and linked images. Unavailable media are marked." = "导出目录含文本和关联图片，无法获取的媒体会标记。";
+
+"Exported {0} messages · {1} images · {2} unavailable" = "已导出 {0} 条消息 · {1} 张图片 · {2} 张不可用";

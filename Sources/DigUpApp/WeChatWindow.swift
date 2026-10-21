@@ -17,7 +17,7 @@ final class WeChatState {
     var exportEnd = Date()
     var exporting = false
     var exportStatus = ""
-    private var exportTask: Task<Int, Error>?
+    private var exportTask: Task<WeChatExportResult, Error>?
 
     func cancelExport() { exportTask?.cancel() }
 
@@ -30,18 +30,21 @@ final class WeChatState {
         formatter.dateFormat = "yyyy-MM-dd"
         let start = exportAll ? nil : formatter.string(from: exportStart)
         let end = exportAll ? nil : calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: exportEnd)).map { formatter.string(from: $0) }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.plainText]
-        panel.nameFieldStringValue = "WeChat-" + formatter.string(from: Date()) + ".txt"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false; panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
+        panel.prompt = L("Export here")
+        guard panel.runModal() == .OK, let parent = panel.url else { return }
+        let url = parent.appendingPathComponent("WeChat-" + formatter.string(from: Date()) + "-" + String(UUID().uuidString.prefix(8)))
         exportPresented = false; exporting = true; exportStatus = ""
         let reader = WeChatReader(executable: executable), zone = TimeZone.current
-        let work = Task.detached { try reader.exportText(session: session, to: url, since: start, until: end, timeZone: zone) }
+        let work = Task.detached { try reader.exportConversation(session: session, to: url, since: start, until: end, timeZone: zone) }
         exportTask = work
         Task {
             do {
-                let count = try await work.value
-                exportStatus = L("Exported {0} messages", count)
+                let report = try await work.value
+                exportStatus = L("Exported {0} messages · {1} images · {2} unavailable", report.messages, report.images, report.unavailableImages)
+                NSWorkspace.shared.activateFileViewerSelecting([url])
             } catch is CancellationError {
                 exportStatus = L("Export cancelled")
             } catch {
@@ -200,7 +203,7 @@ final class WeChatState {
         case .executable: L("WeChat reader not found. Install and configure wx on this Mac, then detect again.")
         case .timeout: L("Reader timed out. Check its service before trying again; no automatic retry was made.")
         case .outputLimit: L("Reader output exceeded the limit. Choose a smaller date range.")
-        case .invalidRange: L("Choose a start date before the end date, at most 31 days apart.")
+        case .invalidRange: L("Choose a start date before the end date.")
         case .changedSource: L("Messages changed during pagination. No partial result was accepted; try again later.")
         case .invalidResponse: L("Unsupported reader response. This connector expects the wx JSON protocol.")
         default: L("Reader failed. Check the selected reader locally; private error output is not logged.")
@@ -329,6 +332,14 @@ struct WeChatView: View {
                 Button(L("Refresh")) { state.read() }.disabled(state.selection.isEmpty || state.busy)
             }
             HStack {
+                Menu(L("Quick range")) {
+                    ForEach(WeChatDatePreset.allCases, id: \.self) { preset in
+                        Button(L(preset.rawValue)) {
+                            state.since = preset.start(through: Date())
+                            state.until = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date()))!
+                        }
+                    }
+                }.fixedSize()
                 DatePicker(L("From"), selection: $state.since, displayedComponents: .date)
                 DatePicker(L("Until (exclusive)"), selection: $state.until, displayedComponents: .date)
             }
@@ -395,11 +406,19 @@ struct WeChatView: View {
                     Text(L("All messages")).tag(true)
                     Text(L("Date range")).tag(false)
                 }.pickerStyle(.segmented)
+                Menu(L("Quick range")) {
+                    ForEach(WeChatDatePreset.allCases, id: \.self) { preset in
+                        Button(L(preset.rawValue)) {
+                            state.exportAll = false
+                            state.exportStart = preset.start(through: Date()); state.exportEnd = Date()
+                        }
+                    }
+                }
                 if !state.exportAll {
                     DatePicker(L("From"), selection: $state.exportStart, displayedComponents: .date)
                     DatePicker(L("Through"), selection: $state.exportEnd, displayedComponents: .date)
                 }
-                Text(L("Local messages as text; media included as labels.")).font(.caption).foregroundStyle(.secondary)
+                Text(L("A folder with text and linked images. Unavailable media are marked.")).font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Spacer()
                     Button(L("Cancel")) { state.exportPresented = false }
