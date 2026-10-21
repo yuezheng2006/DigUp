@@ -11,6 +11,15 @@ enum WeChatAvailability {
 
 @Observable
 final class WeChatState {
+    var selectedPreset: WeChatDatePreset?
+    var exportPreset: WeChatDatePreset?
+    func applyRange(_ preset: WeChatDatePreset) {
+        let now = Date()
+        selectedPreset = preset
+        since = preset.start(through: now)
+        until = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))!
+        read()
+    }
     var exportPresented = false
     var exportAll = true
     var exportStart = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
@@ -331,21 +340,21 @@ struct WeChatView: View {
                     .disabled(state.selection.isEmpty || state.exporting || state.executable.isEmpty)
                 Button(L("Refresh")) { state.read() }.disabled(state.selection.isEmpty || state.busy)
             }
+            HStack(spacing: 6) {
+                ForEach(WeChatDatePreset.allCases, id: \.self) { preset in
+                    Button(L(preset.rawValue)) { state.applyRange(preset) }
+                        .buttonStyle(.bordered)
+                        .tint(state.selectedPreset == preset ? Color.accentColor : Color.secondary)
+                }
+            }.disabled(!state.authorized || state.executable.isEmpty)
             HStack {
-                Menu(L("Quick range")) {
-                    ForEach(WeChatDatePreset.allCases, id: \.self) { preset in
-                        Button(L(preset.rawValue)) {
-                            state.since = preset.start(through: Date())
-                            state.until = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date()))!
-                        }
-                    }
-                }.fixedSize()
-                DatePicker(L("From"), selection: $state.since, displayedComponents: .date)
-                DatePicker(L("Until (exclusive)"), selection: $state.until, displayedComponents: .date)
-            }
-            .disabled(!state.authorized || state.busy || state.executable.isEmpty)
-            .onChange(of: state.since) { _, _ in state.result = nil; state.read() }
-            .onChange(of: state.until) { _, _ in state.result = nil; state.read() }
+                DatePicker(L("From"), selection: Binding(get: { state.since }, set: {
+                    state.selectedPreset = nil; state.since = $0; state.read()
+                }), displayedComponents: .date)
+                DatePicker(L("Until (exclusive)"), selection: Binding(get: { state.until }, set: {
+                    state.selectedPreset = nil; state.until = $0; state.read()
+                }), displayedComponents: .date)
+            }.disabled(!state.authorized || state.executable.isEmpty)
             if state.exporting {
                 HStack {
                     ProgressView().controlSize(.small)
@@ -406,17 +415,20 @@ struct WeChatView: View {
                     Text(L("All messages")).tag(true)
                     Text(L("Date range")).tag(false)
                 }.pickerStyle(.segmented)
-                Menu(L("Quick range")) {
+                HStack(spacing: 6) {
                     ForEach(WeChatDatePreset.allCases, id: \.self) { preset in
                         Button(L(preset.rawValue)) {
-                            state.exportAll = false
-                            state.exportStart = preset.start(through: Date()); state.exportEnd = Date()
+                            state.exportAll = false; state.exportPreset = preset
+                            let now = Date()
+                            state.exportStart = preset.start(through: now); state.exportEnd = now
                         }
+                        .buttonStyle(.bordered)
+                        .tint(!state.exportAll && state.exportPreset == preset ? Color.accentColor : Color.secondary)
                     }
                 }
                 if !state.exportAll {
-                    DatePicker(L("From"), selection: $state.exportStart, displayedComponents: .date)
-                    DatePicker(L("Through"), selection: $state.exportEnd, displayedComponents: .date)
+                    DatePicker(L("From"), selection: Binding(get: { state.exportStart }, set: { state.exportPreset = nil; state.exportStart = $0 }), displayedComponents: .date)
+                    DatePicker(L("Through"), selection: Binding(get: { state.exportEnd }, set: { state.exportPreset = nil; state.exportEnd = $0 }), displayedComponents: .date)
                 }
                 Text(L("A folder with text and linked images. Unavailable media are marked.")).font(.caption).foregroundStyle(.secondary)
                 HStack {
@@ -426,7 +438,7 @@ struct WeChatView: View {
                         .keyboardShortcut(.defaultAction)
                         .disabled(!state.exportAll && Calendar.current.startOfDay(for: state.exportStart) > Calendar.current.startOfDay(for: state.exportEnd))
                 }
-            }.padding(24).frame(width: 360)
+            }.padding(24).frame(width: 460)
         }
     }
 }
