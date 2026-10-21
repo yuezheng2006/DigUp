@@ -1,6 +1,8 @@
 #if os(macOS)
 import Foundation
 import Darwin
+import ImageIO
+import UniformTypeIdentifiers
 
 /// A deliberately small wx protocol adapter. No key acquisition, auto-discovery, or database writes.
 public enum WeChatReadError: String, Error, Sendable {
@@ -32,6 +34,25 @@ public struct WeChatMessage: Identifiable, Sendable, Equatable {
     public let type: String
     /// Lossless source record, not an instruction to an agent.
     public let raw: Data
+}
+
+public struct WeChatExportResult: Sendable {
+    public let messages: Int
+    public let images: Int
+    public let unavailableImages: Int
+}
+
+public enum WeChatDatePreset: String, CaseIterable, Sendable {
+    case week = "Last week", twoWeeks = "Last two weeks", month = "Last month", halfYear = "Last six months"
+    public func start(through date: Date, calendar: Calendar = .current) -> Date {
+        let end = calendar.startOfDay(for: date)
+        switch self {
+        case .week: return calendar.date(byAdding: .day, value: -6, to: end)!
+        case .twoWeeks: return calendar.date(byAdding: .day, value: -13, to: end)!
+        case .month: return calendar.date(byAdding: .month, value: -1, to: end)!
+        case .halfYear: return calendar.date(byAdding: .month, value: -6, to: end)!
+        }
+    }
 }
 
 public struct WeChatReadResult: Sendable {
@@ -202,21 +223,34 @@ public struct WeChatReader: Sendable {
         return try boundedData(file)
     }
 
-    /// Streams all locally available messages to a sibling temporary file, publishing only on success.
+    /// Streams local messages and linked images to a private staging directory, publishing only on success.
     /// Dates are half-open; nil bounds mean all local history, independent of the reading-page cap.
-    public func exportText(session: WeChatSession, to destination: URL, since: String? = nil,
-                           until: String? = nil, timeZone: TimeZone = .current) throws -> Int {
+    public func exportConversation(session: WeChatSession, to destination: URL, since: String? = nil,
+                           until: String? = nil, timeZone: TimeZone = .current) throws -> WeChatExportResult {
         let start = since.flatMap { Self.date($0, timeZone: timeZone) }
         let end = until.flatMap { Self.date($0, timeZone: timeZone) }
         guard !session.id.isEmpty, !session.id.hasPrefix("-"),
               since == nil || start != nil, until == nil || end != nil,
               start == nil || end == nil || start! < end! else { throw WeChatReadError.invalidRange }
+        guard !FileManager.default.fileExists(atPath: destination.path) else { throw WeChatReadError.commandFailed }
         let temporary = destination.deletingLastPathComponent().appendingPathComponent(".digup-export-" + UUID().uuidString)
-        guard FileManager.default.createFile(atPath: temporary.path, contents: nil,
-                                            attributes: [.posixPermissions: 0o600]) else { throw WeChatReadError.commandFailed }
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: temporary) }
-        let output = try FileHandle(forWritingTo: temporary)
-        defer { try? output.close() }
+        let media = temporary.appendingPathComponent("images")
+        try FileManager.default.createDirectory(at: media, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        func file(_ name: String) throws -> FileHandle {
+            let url = temporary.appendingPathComponent(name)
+            guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw WeChatReadError.commandFailed }
+            return try FileHandle(forWritingTo: url)
+        }
+        let output = try file("messages.txt"), html = try file("index.html")
+        defer { try? output.close(); try? html.close() }
+        func escape(_ text: String) -> String {
+            text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+        }
+        func writeHTML(_ text: String) throws { try html.write(contentsOf: Data(text.utf8)) }
+        try writeHTML("<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'\"><title>WeChat</title><style>body{max-width:900px;margin:32px auto;padding:16px;font:16px system-ui}article{border-bottom:1px solid #ddd;padding:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}img{max-width:100%;max-height:600px}header{color:#666}</style><h1>" + escape(session.name) + "</h1>")
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
@@ -231,7 +265,7 @@ public struct WeChatReader: Sendable {
             return items
         }
         try write(session.name + "\n\n")
-        var offset = 0, count = 0, seen = Set<String>()
+        var offset = 0, count = 0, imageCount = 0, unavailable = 0, seen = Set<String>()
         var first: Data?
         while true {
             try Task<Never, Never>.checkCancellation()
@@ -248,15 +282,42 @@ public struct WeChatReader: Sendable {
                 if let end, timestamp >= end.timeIntervalSince1970 { continue }
                 let type = row["type"] as? String ?? "unknown"
                 let body: String
+                var imagePath: String?
                 switch type.lowercased() {
                 case "text", "文本", "1": body = content
-                case "image", "图片", "3": body = "[图片 / Image]"
+                case "image", "图片", "3":
+                    do {
+                        let raw = try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys])
+                        let message = WeChatMessage(id: "\(id)@\(timestamp)", sender: row["sender"] as? String ?? "", timestamp: timestamp, content: content, type: type, raw: raw)
+                        let data = try image(message: message, session: session)
+                        try Task<Never, Never>.checkCancellation()
+                        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                              let decoded = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw WeChatReadError.invalidResponse }
+                        let path = "images/message-\(count + 1).png"
+                        let url = temporary.appendingPathComponent(path)
+                        guard let encoder = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { throw WeChatReadError.commandFailed }
+                        CGImageDestinationAddImage(encoder, decoded, nil)
+                        guard CGImageDestinationFinalize(encoder) else { throw WeChatReadError.commandFailed }
+                        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                        imagePath = path; imageCount += 1
+                        body = "[图片 / Image: \(path)]"
+                    } catch is CancellationError { throw CancellationError() }
+                    catch {
+                        try Task<Never, Never>.checkCancellation()
+                        let failedImage = temporary.appendingPathComponent("images/message-\(count + 1).png")
+                        if FileManager.default.fileExists(atPath: failedImage.path) { try FileManager.default.removeItem(at: failedImage) }
+                        unavailable += 1; body = "[图片不可用 / Image unavailable]"
+                    }
                 case "video", "视频", "43": body = "[视频 / Video]"
                 case "sticker", "表情", "表情包", "47": body = "[表情 / Sticker]"
                 case "voice", "语音", "34": body = "[语音 / Voice]"
                 default: body = "[附件或其他消息 / Attachment or other message]"
                 }
                 try write("\(formatter.string(from: Date(timeIntervalSince1970: timestamp)))  \(row["sender"] as? String ?? "")\n\(body)\n\n")
+                let heading = formatter.string(from: Date(timeIntervalSince1970: timestamp)) + "  " + (row["sender"] as? String ?? "")
+                try writeHTML("<article id=\"message-\(count + 1)\"><header>" + escape(heading) + "</header><pre>" + escape(body) + "</pre>")
+                if let imagePath { try writeHTML("<a href=\"\(imagePath)\"><img loading=\"lazy\" src=\"\(imagePath)\" alt=\"图片 / Image\"></a>") }
+                try writeHTML("</article>\n")
                 count += 1
             }
             if items.count < 200 { break }
@@ -269,8 +330,10 @@ public struct WeChatReader: Sendable {
         try Task<Never, Never>.checkCancellation()
         try output.synchronize()
         try output.close()
-        guard rename(temporary.path, destination.path) == 0 else { throw WeChatReadError.commandFailed }
-        return count
+        try html.synchronize(); try html.close()
+        // A new directory only: never overwrite an existing export or user folder.
+        try FileManager.default.moveItem(at: temporary, to: destination)
+        return WeChatExportResult(messages: count, images: imageCount, unavailableImages: unavailable)
     }
 
     public static func date(_ value: String, timeZone: TimeZone) -> Date? {
@@ -287,7 +350,7 @@ public struct WeChatReader: Sendable {
     public func history(session: WeChatSession, since: String, until: String, timeZone: TimeZone = .current,
                         pageSize: Int = 100, maxPages: Int = 5) throws -> WeChatReadResult {
         guard let start = Self.date(since, timeZone: timeZone), let end = Self.date(until, timeZone: timeZone),
-              end > start, end.timeIntervalSince(start) <= 31 * 86400 + 3600,
+              end > start,
               (1...200).contains(pageSize), (1...10).contains(maxPages),
               !session.id.isEmpty, !session.id.hasPrefix("-") else { throw WeChatReadError.invalidRange }
         func page(_ offset: Int) throws -> ([[String: Any]], [String: Any]) {

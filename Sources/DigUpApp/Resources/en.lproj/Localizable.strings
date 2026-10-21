@@ -518,3 +518,21 @@
 "Export cancelled" = "Export cancelled";
 
 "Export failed. No partial file was saved." = "Export failed. No partial file was saved.";
+
+"Export here" = "Export here";
+
+"Quick range" = "Quick range";
+
+"Last week" = "Last week";
+
+"Last two weeks" = "Last two weeks";
+
+"Last month" = "Last month";
+
+"Last six months" = "Last six months";
+
+"Choose a start date before the end date." = "Choose a start date before the end date.";
+
+"A folder with text and linked images. Unavailable media are marked." = "A folder with text and linked images. Unavailable media are marked.";
+
+"Exported {0} messages · {1} images · {2} unavailable" = "Exported {0} messages · {1} images · {2} unavailable";
