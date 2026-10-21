@@ -496,3 +496,25 @@
 "Official accounts" = "Official accounts";
 
 "Other conversations" = "Other conversations";
+
+"Export…" = "Export…";
+
+"Export conversation" = "Export conversation";
+
+"Export range" = "Export range";
+
+"All messages" = "All messages";
+
+"Date range" = "Date range";
+
+"Through" = "Through";
+
+"Local messages as text; media included as labels." = "Local messages as text; media included as labels.";
+
+"Exporting…" = "Exporting…";
+
+"Exported {0} messages" = "Exported {0} messages";
+
+"Export cancelled" = "Export cancelled";
+
+"Export failed. No partial file was saved." = "Export failed. No partial file was saved.";

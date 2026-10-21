@@ -2,6 +2,7 @@ import AppKit
 import DigUpKit
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Enabled after real local group and individual chat acceptance.
 enum WeChatAvailability {
@@ -10,6 +11,46 @@ enum WeChatAvailability {
 
 @Observable
 final class WeChatState {
+    var exportPresented = false
+    var exportAll = true
+    var exportStart = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    var exportEnd = Date()
+    var exporting = false
+    var exportStatus = ""
+    private var exportTask: Task<Int, Error>?
+
+    func cancelExport() { exportTask?.cancel() }
+
+    func exportMessages() {
+        guard !exporting, let session = sessions.first(where: { $0.id == selection }) else { return }
+        let calendar = Calendar.current
+        guard exportAll || calendar.startOfDay(for: exportStart) <= calendar.startOfDay(for: exportEnd) else { return }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        let start = exportAll ? nil : formatter.string(from: exportStart)
+        let end = exportAll ? nil : calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: exportEnd)).map { formatter.string(from: $0) }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "WeChat-" + formatter.string(from: Date()) + ".txt"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        exportPresented = false; exporting = true; exportStatus = ""
+        let reader = WeChatReader(executable: executable), zone = TimeZone.current
+        let work = Task.detached { try reader.exportText(session: session, to: url, since: start, until: end, timeZone: zone) }
+        exportTask = work
+        Task {
+            do {
+                let count = try await work.value
+                exportStatus = L("Exported {0} messages", count)
+            } catch is CancellationError {
+                exportStatus = L("Export cancelled")
+            } catch {
+                exportStatus = L("Export failed. No partial file was saved.") + " " + message(error)
+            }
+            exporting = false; exportTask = nil
+        }
+    }
+
     var executable = ""
     var authorized = true
     var sessions: [WeChatSession] = []
@@ -283,6 +324,8 @@ struct WeChatView: View {
                 Text(state.sessions.first(where: { $0.id == state.selection }).map { $0.name == $0.id ? L("Unnamed conversation") : $0.name } ?? L("Choose a conversation"))
                     .font(.headline).lineLimit(1)
                 Spacer()
+                Button(L("Export…")) { state.exportPresented = true }
+                    .disabled(state.selection.isEmpty || state.exporting || state.executable.isEmpty)
                 Button(L("Refresh")) { state.read() }.disabled(state.selection.isEmpty || state.busy)
             }
             HStack {
@@ -292,6 +335,14 @@ struct WeChatView: View {
             .disabled(!state.authorized || state.busy || state.executable.isEmpty)
             .onChange(of: state.since) { _, _ in state.result = nil; state.read() }
             .onChange(of: state.until) { _, _ in state.result = nil; state.read() }
+            if state.exporting {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text(L("Exporting…"))
+                    Button(L("Cancel")) { state.cancelExport() }
+                }
+            }
+            if !state.exportStatus.isEmpty { Text(state.exportStatus).font(.caption).textSelection(.enabled) }
             if state.busy { ProgressView().controlSize(.small) }
             if let error = state.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             if let result = state.result {
@@ -337,6 +388,27 @@ struct WeChatView: View {
             }
             }.padding(16).frame(maxWidth: .infinity, maxHeight: .infinity)
         }.frame(minWidth: 760, minHeight: 400)
+        .sheet(isPresented: $state.exportPresented) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(L("Export conversation")).font(.headline)
+                Picker(L("Export range"), selection: $state.exportAll) {
+                    Text(L("All messages")).tag(true)
+                    Text(L("Date range")).tag(false)
+                }.pickerStyle(.segmented)
+                if !state.exportAll {
+                    DatePicker(L("From"), selection: $state.exportStart, displayedComponents: .date)
+                    DatePicker(L("Through"), selection: $state.exportEnd, displayedComponents: .date)
+                }
+                Text(L("Local messages as text; media included as labels.")).font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button(L("Cancel")) { state.exportPresented = false }
+                    Button(L("Export…")) { state.exportMessages() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!state.exportAll && Calendar.current.startOfDay(for: state.exportStart) > Calendar.current.startOfDay(for: state.exportEnd))
+                }
+            }.padding(24).frame(width: 360)
+        }
     }
 }
 

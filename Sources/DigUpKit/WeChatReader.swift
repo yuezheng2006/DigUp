@@ -202,6 +202,77 @@ public struct WeChatReader: Sendable {
         return try boundedData(file)
     }
 
+    /// Streams all locally available messages to a sibling temporary file, publishing only on success.
+    /// Dates are half-open; nil bounds mean all local history, independent of the reading-page cap.
+    public func exportText(session: WeChatSession, to destination: URL, since: String? = nil,
+                           until: String? = nil, timeZone: TimeZone = .current) throws -> Int {
+        let start = since.flatMap { Self.date($0, timeZone: timeZone) }
+        let end = until.flatMap { Self.date($0, timeZone: timeZone) }
+        guard !session.id.isEmpty, !session.id.hasPrefix("-"),
+              since == nil || start != nil, until == nil || end != nil,
+              start == nil || end == nil || start! < end! else { throw WeChatReadError.invalidRange }
+        let temporary = destination.deletingLastPathComponent().appendingPathComponent(".digup-export-" + UUID().uuidString)
+        guard FileManager.default.createFile(atPath: temporary.path, contents: nil,
+                                            attributes: [.posixPermissions: 0o600]) else { throw WeChatReadError.commandFailed }
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let output = try FileHandle(forWritingTo: temporary)
+        defer { try? output.close() }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+        func write(_ text: String) throws { try output.write(contentsOf: Data(text.utf8)) }
+        func page(_ offset: Int) throws -> [[String: Any]] {
+            var args = ["history", session.id, "--limit", "200", "--offset", String(offset), "--with-meta", "--json"]
+            if let since { args += ["--since", since] }
+            if let until { args += ["--until", until] }
+            let (items, meta) = try Self.rows(run(args), key: "messages", expectedUsername: session.id)
+            guard items.count <= 200 else { throw WeChatReadError.invalidResponse }
+            if let missing = meta["unknown_shards"] as? [Any], !missing.isEmpty { throw WeChatReadError.invalidResponse }
+            return items
+        }
+        try write(session.name + "\n\n")
+        var offset = 0, count = 0, seen = Set<String>()
+        var first: Data?
+        while true {
+            try Task<Never, Never>.checkCancellation()
+            let items = try page(offset)
+            if offset == 0 { first = try JSONSerialization.data(withJSONObject: items, options: [.sortedKeys]) }
+            for row in items {
+                if let owner = row["chat_username"] as? String, owner != session.id { throw WeChatReadError.changedSource }
+                guard let stamp = row["timestamp"] as? NSNumber, CFGetTypeID(stamp) != CFBooleanGetTypeID(),
+                      stamp.doubleValue.isFinite, let content = row["content"] as? String,
+                      let id = row["local_id"], id is String || id is NSNumber else { throw WeChatReadError.invalidResponse }
+                let timestamp = stamp.doubleValue
+                guard seen.insert("\(id)@\(timestamp)").inserted else { throw WeChatReadError.changedSource }
+                if let start, timestamp < start.timeIntervalSince1970 { continue }
+                if let end, timestamp >= end.timeIntervalSince1970 { continue }
+                let type = row["type"] as? String ?? "unknown"
+                let body: String
+                switch type.lowercased() {
+                case "text", "文本", "1": body = content
+                case "image", "图片", "3": body = "[图片 / Image]"
+                case "video", "视频", "43": body = "[视频 / Video]"
+                case "sticker", "表情", "表情包", "47": body = "[表情 / Sticker]"
+                case "voice", "语音", "34": body = "[语音 / Voice]"
+                default: body = "[附件或其他消息 / Attachment or other message]"
+                }
+                try write("\(formatter.string(from: Date(timeIntervalSince1970: timestamp)))  \(row["sender"] as? String ?? "")\n\(body)\n\n")
+                count += 1
+            }
+            if items.count < 200 { break }
+            offset += items.count
+        }
+        // Detect a moving pagination head rather than silently delivering a partial export.
+        guard try JSONSerialization.data(withJSONObject: page(0), options: [.sortedKeys]) == first else {
+            throw WeChatReadError.changedSource
+        }
+        try Task<Never, Never>.checkCancellation()
+        try output.synchronize()
+        try output.close()
+        guard rename(temporary.path, destination.path) == 0 else { throw WeChatReadError.commandFailed }
+        return count
+    }
+
     public static func date(_ value: String, timeZone: TimeZone) -> Date? {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

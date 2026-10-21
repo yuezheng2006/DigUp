@@ -496,3 +496,25 @@
 "Official accounts" = "公众号";
 
 "Other conversations" = "其他会话";
+
+"Export…" = "导出…";
+
+"Export conversation" = "导出会话";
+
+"Export range" = "导出范围";
+
+"All messages" = "全部消息";
+
+"Date range" = "起止日期";
+
+"Through" = "截至（含当天）";
+
+"Local messages as text; media included as labels." = "导出本机记录为文本，媒体以标记保留。";
+
+"Exporting…" = "正在导出…";
+
+"Exported {0} messages" = "已导出 {0} 条消息";
+
+"Export cancelled" = "已取消导出";
+
+"Export failed. No partial file was saved." = "导出失败，未保存不完整文件。";
