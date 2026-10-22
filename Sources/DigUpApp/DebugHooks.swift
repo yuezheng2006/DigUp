@@ -309,7 +309,7 @@ enum DebugHooks {
             case "wechat", "wechat-moments":
                 app.wechatWindow.state.showsMoments = parts[0] == "wechat-moments"
                 app.wechatWindow.show()
-                loaded = { true }
+                loaded = { parts[0] != "wechat-moments" || Date().timeIntervalSince(started) > 5 }
                 draw = { try app.wechatWindow.snapshot(to: $0) }
                 close = {}
             case "settings" where parts.count > 1 && parts[1] == "addcode":

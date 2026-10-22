@@ -16,7 +16,7 @@ import Testing
         let reader = WeChatMomentsProvider(run: { args in
             #expect(args.prefix(2) == ["sns-search", "旅行"])
             #expect(args.contains("--user"))
-            return Data(#"[{"tid":1,"author":"Author","content":"Text","timestamp":1234,"media":[{"url_key":"secret"}]}]"#.utf8)
+            return Data(#"[{"tid":1,"author":"Author","author_username":"wxid_test","content":"Text","timestamp":1234,"media":[{"url_key":"secret"}]}]"#.utf8)
         })
         let rows = try reader.moments(query: "旅行", author: "Author", since: nil, until: nil)
         #expect(rows.count == 1)

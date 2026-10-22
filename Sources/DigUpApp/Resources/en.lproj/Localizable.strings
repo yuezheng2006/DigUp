@@ -594,3 +594,29 @@
 "No cached Moments in this range" = "No cached Moments in this range";
 
 "Media preview unavailable ({0})" = "Media preview unavailable ({0})";
+
+"All Moments" = "All Moments";
+
+"My Moments" = "My Moments";
+
+"Current account could not be identified" = "Current account could not be identified";
+
+"Find person" = "Find person";
+
+"Hide suspected ads" = "Hide suspected ads";
+
+"Hide enterprise accounts" = "Hide enterprise accounts";
+
+"Show hidden posts" = "Show hidden posts";
+
+"Cached posts" = "Cached posts";
+
+"No visible posts. Adjust dates or filters." = "No visible posts. Adjust dates or filters.";
+
+"Me" = "Me";
+
+"Hide this author" = "Hide this author";
+
+"Always show this author" = "Always show this author";
+
+"Retry image" = "Retry image";

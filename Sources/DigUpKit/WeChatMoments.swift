@@ -1,8 +1,25 @@
 #if os(macOS)
 import Foundation
 
+public struct WeChatMomentMedia: Sendable, Identifiable {
+    public let id: String
+    public let url: URL
+    public let key: String
+    public let token: String
+    public let index: String
+    init?(_ row: [String: Any]) {
+        guard let text = row["thumb"] as? String, let url = URL(string: text) else { return nil }
+        self.url = url; id = row["md5"] as? String ?? text
+        key = row["thumb_key"] as? String ?? ""
+        token = row["thumb_token"] as? String ?? ""
+        index = row["thumb_enc_idx"] as? String ?? ""
+    }
+}
+
 public struct WeChatMoment: Identifiable, Sendable {
     public let id: String
+    public let authorID: String
+    public let media: [WeChatMomentMedia]
     public let author: String
     public let content: String
     public let timestamp: Double
@@ -41,9 +58,11 @@ public struct WeChatMomentsProvider: WeChatMomentsProviding {
             guard let tid = row["tid"] as? NSNumber, CFGetTypeID(tid) != CFBooleanGetTypeID(),
                   let stamp = row["timestamp"] as? NSNumber, CFGetTypeID(stamp) != CFBooleanGetTypeID(),
                   stamp.doubleValue.isFinite, stamp.doubleValue > 0,
+                  let authorID = row["author_username"] as? String, !authorID.isEmpty, !authorID.hasPrefix("-"),
                   let author = row["author"] as? String, let content = row["content"] as? String,
                   seen.insert(tid.stringValue).inserted else { throw WeChatReadError.invalidResponse }
-            return WeChatMoment(id: tid.stringValue, author: author, content: content,
+            return WeChatMoment(id: tid.stringValue, authorID: authorID,
+                                media: (row["media"] as? [[String: Any]] ?? []).compactMap(WeChatMomentMedia.init), author: author, content: content,
                                 timestamp: stamp.doubleValue, mediaCount: max(0, (row["media"] as? [Any])?.count ?? 0))
         }.sorted { $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp > $1.timestamp }
     }

@@ -594,3 +594,29 @@
 "No cached Moments in this range" = "该时间范围暂无朋友圈缓存";
 
 "Media preview unavailable ({0})" = "媒体暂不可预览（{0}）";
+
+"All Moments" = "全部动态";
+
+"My Moments" = "我的朋友圈";
+
+"Current account could not be identified" = "暂未识别当前微信账号";
+
+"Find person" = "查找联系人";
+
+"Hide suspected ads" = "过滤疑似广告";
+
+"Hide enterprise accounts" = "过滤企业账号";
+
+"Show hidden posts" = "显示已过滤";
+
+"Cached posts" = "本地缓存";
+
+"No visible posts. Adjust dates or filters." = "暂无动态，可调整日期或过滤条件";
+
+"Me" = "我";
+
+"Hide this author" = "屏蔽此人动态";
+
+"Always show this author" = "始终显示此人";
+
+"Retry image" = "图片加载失败，重试";
