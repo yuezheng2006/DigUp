@@ -47,6 +47,14 @@ public enum SearchText {
     /// since text that short collapses toward the model's generic centre; its words are still found by keyword.
     public static func hasProse(_ text: String) -> Bool {
         guard hasWords(text) else { return false }
+        // Chinese prose usually has no spaces. Keep sentence-sized Han text eligible
+        // instead of treating a whole paragraph as a single short English word.
+        // Eight Han characters is a conservative length heuristic, not word segmentation.
+        let hanCount = text.unicodeScalars.lazy.filter {
+            (0x3400...0x4DBF).contains($0.value) || (0x4E00...0x9FFF).contains($0.value)
+                || (0x20000...0x2FA1F).contains($0.value) || (0x30000...0x323AF).contains($0.value)
+        }.prefix(8).count
+        if hanCount >= 8 { return true }
         var words = 0
         for word in text.split(whereSeparator: \.isWhitespace) where word.unicodeScalars.contains(where: CharacterSet.letters.contains) {
             words += 1

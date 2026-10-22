@@ -207,8 +207,8 @@ function reasonLines(leftOut, skippedReasons) {
   };
   const byCount = (a, b) => b[1] - a[1];
   const left = Object.entries(leftOut).sort(byCount).map(([reason, count]) =>
-    reason.startsWith("folders ") ? `${count.toLocaleString()} folders weren't opened (${reason.slice(8)})` : `${count.toLocaleString()} ${crawl[reason] || reason}`);
-  const skipped = Object.entries(skippedReasons).sort(byCount).map(([reason, count]) => `${count.toLocaleString()} skipped: ${reason}`);
+    reason.startsWith("folders ") ? t("{0} folders weren't opened ({1})", count.toLocaleString(), t(reason.slice(8))) : `${count.toLocaleString()} ${t(crawl[reason] || reason)}`);
+  const skipped = Object.entries(skippedReasons).sort(byCount).map(([reason, count]) => t("{0} skipped: {1}", count.toLocaleString(), t(reason)));
   return left.concat(skipped);
 }
 
@@ -238,8 +238,8 @@ function folderRow(folder, summary, code = false) {
       const line = element("div", "states", states);
       const reasons = reasonLines(leftOut, summary.skipped_reasons || {});
       if (reasons.length) {
-        const why = element("button", "why", "why");
-        why.title = "Why some files aren't searchable";
+        const why = element("button", "why", t("why"));
+        why.title = t("Why some files aren't searchable");
         const list = element("div", "reasons");
         list.hidden = true;
         for (const reason of reasons) list.append(element("div", null, reason));

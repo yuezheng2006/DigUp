@@ -536,3 +536,45 @@
 "A folder with text and linked images. Unavailable media are marked." = "A folder with text and linked images. Unavailable media are marked.";
 
 "Exported {0} messages · {1} images · {2} unavailable" = "Exported {0} messages · {1} images · {2} unavailable";
+
+"Start Indexing" = "Start Indexing";
+
+"Start indexing" = "Start indexing";
+
+"{0} not read" = "{0} not read";
+
+"Why some files aren't searchable" = "Why some files aren't searchable";
+
+"why" = "why";
+
+"Search this folder's code again" = "Search this folder's code again";
+
+"None. What git ignores, vendored and generated code are skipped anyway." = "None. What git ignores, vendored and generated code are skipped anyway.";
+
+"Next, DigUp looks through your usual folders to say how long each would take; nothing is indexed until you choose." = "Next, DigUp looks through your usual folders to say how long each would take; nothing is indexed until you choose.";
+
+"DigUp only reads pictures, PDFs, documents (txt, md, typ, rtf, docx, odt, html), audio and video here; " = "DigUp only reads pictures, PDFs, documents (txt, md, typ, rtf, docx, odt, html), audio and video here; ";
+
+"of types DigUp doesn't read" = "of types DigUp doesn't read";
+
+"inside apps or bundles" = "inside apps or bundles";
+
+"in a Photos library (its photos aren't read yet)" = "in a Photos library (its photos aren't read yet)";
+
+"in a Photos library" = "in a Photos library";
+
+"links or special files" = "links or special files";
+
+"only in the cloud, not downloaded" = "only in the cloud, not downloaded";
+
+"inside code projects, where only screenshots count" = "inside code projects, where only screenshots count";
+
+"in folders that look like datasets" = "in folders that look like datasets";
+
+"code or data files" = "code or data files";
+
+"of the file types you skip" = "of the file types you skip";
+
+"{0} skipped: {1}" = "{0} skipped: {1}";
+
+"{0} {1} weren't opened" = "{0} {1} weren't opened";

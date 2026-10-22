@@ -12,6 +12,28 @@ const DigUpI18n = (() => {
   }
   const locale = language(typeof navigator === "undefined" ? ["en"] : navigator.languages || [navigator.language]);
   const chinese = {
+  "Start Indexing": "开始索引",
+  "Start indexing": "开始索引",
+  "{0} not read": "{0} 个未读取",
+  "Why some files aren't searchable": "为何部分文件无法搜索",
+  "why": "原因",
+  "Search this folder's code again": "重新搜索此文件夹的代码",
+  "None. What git ignores, vendored and generated code are skipped anyway.": "无。Git 忽略的内容、第三方代码和生成的代码仍会跳过。",
+  "Next, DigUp looks through your usual folders to say how long each would take; nothing is indexed until you choose.": "接下来，DigUp 会查看常用文件夹并估算所需时间；只有选定后才开始索引。",
+  "DigUp only reads pictures, PDFs, documents (txt, md, typ, rtf, docx, odt, html), audio and video here; ": "DigUp 在此仅读取图片、PDF、文档（txt、md、typ、rtf、docx、odt、html）、音频和视频；",
+  "of types DigUp doesn't read": "属于不支持的文件类型",
+  "inside apps or bundles": "位于应用或程序包内",
+  "in a Photos library (its photos aren't read yet)": "位于照片图库内（暂不读取图库照片）",
+  "in a Photos library": "位于照片图库内",
+  "links or special files": "链接或特殊文件",
+  "only in the cloud, not downloaded": "仅在云端，尚未下载",
+  "inside code projects, where only screenshots count": "位于代码项目内，此处只读取截图",
+  "in folders that look like datasets": "位于疑似数据集的文件夹内",
+  "code or data files": "代码或数据文件",
+  "of the file types you skip": "属于已设置跳过的文件类型",
+  "{0} skipped: {1}": "跳过 {0} 个：{1}",
+  "{0} {1} weren't opened": "{0} 个{1}未打开",
+
   "DigUp reads pictures, PDFs, documents (txt, md, rtf, docx, odt, html), audio and video. Keys, certificates and password files are never read, nor are hidden folders.": "DigUp 读取图片、PDF、文档（txt、md、rtf、docx、odt、html）、音频和视频。密钥、证书、密码文件和隐藏文件夹始终不会被读取。",
   "About DigUp": "关于 DigUp",
   "Hide DigUp": "隐藏 DigUp",

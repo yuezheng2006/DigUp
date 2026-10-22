@@ -3,6 +3,12 @@ import Testing
 @testable import DigUpKit
 
 @Suite struct SearchTextTests {
+    @Test func chineseParagraphsDoNotRequireSpaces() {
+        #expect(SearchText.hasProse("明天下午讨论项目进度和交付安排。"))
+        #expect(SearchText.hasProse("請保留這份文件以便日後查閱。"))
+        #expect(!SearchText.hasProse("你好"))
+        #expect(!SearchText.hasProse("DEBUG=true"))
+    }
     @Test func stubsHaveWordsButNoProse() {
         for stub in ["DEBUG=true", "root = true", "#separator:pipe", "id,name,value", "User-agent: *", "# Ignore logs\n*.log"] {
             #expect(SearchText.hasWords(stub), "\(stub)")

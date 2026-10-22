@@ -505,7 +505,7 @@ private struct FolderStatusRow: View {
                             .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .help("Why some files aren't searchable")
+                        .help(L("Why some files aren't searchable"))
                         .popover(isPresented: $showingReasons, arrowEdge: .bottom) {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(reasons, id: \.self) { Text($0) }
@@ -551,10 +551,10 @@ private struct FolderStatusRow: View {
             "excluded type": "of the file types you skip",
         ]
         let leftOut = summary.leftOut.sorted { $0.value > $1.value }.map { reason, count in
-            reason.hasPrefix("folders ") ? "\(count.formatted()) folders weren't opened (\(reason.dropFirst(8)))"
-                : "\(count.formatted()) \(crawl[reason] ?? reason)"
+            reason.hasPrefix("folders ") ? L("{0} folders weren't opened ({1})", count.formatted(), L(String(reason.dropFirst(8))))
+                : "\(count.formatted()) \(L(crawl[reason] ?? reason))"
         }
-        let skipped = summary.skippedReasons.sorted { $0.value > $1.value }.map { "\($1.formatted()) skipped: \($0)" }
+        let skipped = summary.skippedReasons.sorted { $0.value > $1.value }.map { L("{0} skipped: {1}", $1.formatted(), L($0)) }
         return leftOut + skipped
     }
 }
@@ -699,26 +699,26 @@ private struct CodeSettings: View {
                                 Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
-                            .help("Search this folder's code again")
+                            .help(L("Search this folder's code again"))
                         }
                     }
                     if state.model.settings.codeExcluded.isEmpty {
-                        Text("None. What git ignores, vendored and generated code are skipped anyway.")
+                        Text(L("None. What git ignores, vendored and generated code are skipped anyway."))
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("Skip these folders")
+                    Text(L("Skip these folders"))
                 } footer: {
                     HStack {
                         Button {
-                            state.app.pickFolders(for: NSApp.keyWindow, prompt: "Skip") { folders in
+                            state.app.pickFolders(for: NSApp.keyWindow, prompt: L("Skip")) { folders in
                                 guard !folders.isEmpty else { return }
                                 let excluded = state.model.settings.codeExcluded
                                 state.app.applyCodeFolders(state.model.settings.codeRoots,
                                                            excluded: excluded + folders.filter { !excluded.contains($0) })
                             }
                         } label: {
-                            Label("Skip a Folder…", systemImage: "plus")
+                            Label(L("Skip a Folder…"), systemImage: "plus")
                         }
                         Spacer()
                     }
