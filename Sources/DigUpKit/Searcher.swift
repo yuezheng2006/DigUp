@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(NaturalLanguage)
+import NaturalLanguage
+#endif
 
 public struct SearchHit: Sendable {
     public let path: String
@@ -180,6 +183,23 @@ public final class Searcher {
         let hinted = Self.kindHints(text)
         var candidates = Set(best.filter { $0.value.z >= zGate }.keys)
         for (file, share) in coverage where share >= 0.5 { candidates.insert(file) }
+        // A visual/audio embedding is not evidence of a person's identity. For recognized names,
+        // require the name in the file's own title or indexed text, never its parent directory.
+        // Scan text rather than FTS tokens: Chinese names may be embedded inside a longer token.
+        let names = isCode ? [] : Self.personNames(text)
+        var personEvidence: [Int64: Int64] = [:]
+        if !names.isEmpty {
+            let body = "CASE WHEN s.kind = 'name' THEN fts.name ELSE fts.body END"
+            let predicate = names.map { _ in "instr(\(body), ?) > 0" }.joined(separator: " AND ")
+            try store.db.query("""
+                SELECT s.file, s.id FROM fts JOIN segments s ON s.id = fts.rowid
+                WHERE \(predicate) ORDER BY s.kind = 'name', s.loc, s.id
+                """, names.map { .text(SearchText.normalized($0)) }) { row in
+                let file = row.int(0)
+                if allowed(file), personEvidence[file] == nil { personEvidence[file] = row.int(1) }
+            }
+            candidates = Set(personEvidence.keys)
+        }
         var scored: [Int64: Double] = [:]
         for file in candidates {
             var score = meaningWeight * max(best[file]?.z ?? 0, 0) + wordsWeight * pow(coverage[file] ?? 0, 1.5)
@@ -197,7 +217,7 @@ public final class Searcher {
             let keyword = wordRank[file]
             // Point at the best meaning segment if it stands out; else at the segment the words matched.
             let useMeaning = semantic.map { $0.z >= zGate || keyword == nil } ?? false
-            guard var segmentID = useMeaning ? semantic.map({ rowSegment[$0.row] }) : keyword?.1.segment else { continue }
+            guard var segmentID = personEvidence[file] ?? (useMeaning ? semantic.map({ rowSegment[$0.row] }) : keyword?.1.segment) else { continue }
             var focus: Double?
             if isCode {
                 // Where a name is defined is looked for in the first 10 results only: a name used all over a big repo
@@ -275,6 +295,22 @@ public final class Searcher {
     /// embedding but everything to keyword search: a query made of them weighs words double and meaning half. Numbers
     /// count since 2026-10-09, when text of digits lost its vectors (`SearchText.hasWords`): a number in a data dump fell
     /// below unrelated meaning matches.
+    static func personNames(_ text: String) -> [String] {
+        #if canImport(NaturalLanguage)
+        let tagger = NLTagger(tagSchemes: [.nameType])
+        tagger.string = text
+        var names: [String] = []
+        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType,
+                            options: [.joinNames, .omitWhitespace]) { tag, range in
+            if tag == .personalName { names.append(String(text[range])) }
+            return true
+        }
+        return names
+        #else
+        return []
+        #endif
+    }
+
     static func isLookup(_ terms: [String]) -> Bool {
         !terms.isEmpty && terms.allSatisfy {
             $0.contains(where: \.isNumber) && ($0.contains(where: \.isLetter) || $0.count >= 4)
