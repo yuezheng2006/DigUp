@@ -16,6 +16,7 @@ let usage = """
                                               of long PDFs and documents
       digup search <words>... [--kind K,K] [-n 10] [--json]
                                               "code: <words>" searches the code index
+      digup wechat <sessions|history|search|sns-feed|sns-search> [arguments]
       digup status                            what's in the index
       digup speed [--model [--if-needed] [--when-quiet S] [--tries N]] [--json]
                                               this machine's speed next to the M4 Pro behind the estimates, and
@@ -695,6 +696,7 @@ do {
         print(usage)
         exit(0)
     }
+    if command == "wechat" { try wechatCommand(Array(raw.dropFirst())); exit(0) }
     let args = try Arguments(raw.dropFirst())
     if ["index-service", "worker", "search-service", "download-model"].contains(command)
         || command == "estimate" && args.flags.contains("--json") {
