@@ -11,6 +11,7 @@ enum WeChatAvailability {
 
 @Observable
 final class WeChatState {
+    var showsMoments = false
     var selectedPreset: WeChatDatePreset?
     var exportPreset: WeChatDatePreset?
     func applyRange(_ preset: WeChatDatePreset) {
@@ -276,7 +277,7 @@ final class WeChatState {
     }
 }
 
-struct WeChatView: View {
+struct WeChatChatsView: View {
     @Bindable var state: WeChatState
     var body: some View {
         HStack(spacing: 0) {

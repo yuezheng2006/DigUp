@@ -384,10 +384,14 @@ struct SearchWindowView: View {
                         .font(.system(size: search.isCode ? 15 : 17, weight: .semibold))
                         .foregroundStyle(Brand.gradient)
                         .frame(width: 22)
+                    if wechat.selected && wechat.showsMoments {
+                        Text(L("Moments feed")).frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
                     SearchField(text: wechat.selected ? $wechat.query : $search.query, fontSize: 18,
                                 placeholder: wechat.selected ? L("Search chat messages by words or meaning") : placeholder,
                                 onMake: { search.field = $0 }, onFocus: { fieldFocused = $0 })
-                    if !(wechat.selected ? wechat.query : search.query).isEmpty {
+                    }
+                    if !(wechat.selected && wechat.showsMoments) && !(wechat.selected ? wechat.query : search.query).isEmpty {
                         Button {
                             if wechat.selected { wechat.query = "" } else { search.query = "" }
                         } label: {

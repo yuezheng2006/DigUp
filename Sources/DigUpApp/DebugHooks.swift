@@ -306,7 +306,8 @@ enum DebugHooks {
             let close: () -> Void
             var choices: () -> FolderChoices? = { nil }
             switch parts[0] {
-            case "wechat":
+            case "wechat", "wechat-moments":
+                app.wechatWindow.state.showsMoments = parts[0] == "wechat-moments"
                 app.wechatWindow.show()
                 loaded = { true }
                 draw = { try app.wechatWindow.snapshot(to: $0) }

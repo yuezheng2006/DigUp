@@ -578,3 +578,19 @@
 "{0} skipped: {1}" = "跳过 {0} 个：{1}";
 
 "{0} {1} weren't opened" = "{0} 个{1}未打开";
+
+"Moments feed" = "朋友圈";
+
+"Invalid date range" = "日期范围无效";
+
+"Could not read Moments. Check WeChat access and retry." = "朋友圈读取失败，请检查微信访问配置后重试。";
+
+"Search Moments" = "搜索朋友圈";
+
+"Author" = "作者";
+
+"Local Moments cache · up to 100 posts" = "本地朋友圈缓存 · 最多 100 条";
+
+"No cached Moments in this range" = "该时间范围暂无朋友圈缓存";
+
+"Media preview unavailable ({0})" = "媒体暂不可预览（{0}）";

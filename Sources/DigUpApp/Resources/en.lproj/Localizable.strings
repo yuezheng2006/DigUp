@@ -578,3 +578,19 @@
 "{0} skipped: {1}" = "{0} skipped: {1}";
 
 "{0} {1} weren't opened" = "{0} {1} weren't opened";
+
+"Moments feed" = "Moments feed";
+
+"Invalid date range" = "Invalid date range";
+
+"Could not read Moments. Check WeChat access and retry." = "Could not read Moments. Check WeChat access and retry.";
+
+"Search Moments" = "Search Moments";
+
+"Author" = "Author";
+
+"Local Moments cache · up to 100 posts" = "Local Moments cache · up to 100 posts";
+
+"No cached Moments in this range" = "No cached Moments in this range";
+
+"Media preview unavailable ({0})" = "Media preview unavailable ({0})";
