@@ -620,3 +620,12 @@
 "Always show this author" = "Always show this author";
 
 "Retry image" = "Retry image";
+
+"{0} folders weren't opened ({1})" = "{0} folders weren't opened ({1})";
+"Next, DigUp looks through your usual folders, and any with code, to say how long each would take; nothing is indexed until you choose." = "Next, DigUp looks through your usual folders, and any with code, to say how long each would take; nothing is indexed until you choose.";
+"developer folder" = "developer folder";
+".noindex folder" = ".noindex folder";
+"cache folder" = "cache folder";
+"excluded folder" = "excluded folder";
+"vendored or built code" = "vendored or built code";
+"submodule or worktree" = "submodule or worktree";

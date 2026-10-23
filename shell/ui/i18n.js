@@ -594,6 +594,14 @@ const DigUpI18n = (() => {
   "recording": "个录音",
   "recordings": "个录音",
   "Chinese fork: updates are downloaded manually from this fork’s releases.": "中文分支：请从此分支的发布页手动下载更新。",
+  "{0} folders weren't opened ({1})": "{0} 个文件夹未打开（{1}）",
+  "Next, DigUp looks through your usual folders, and any with code, to say how long each would take; nothing is indexed until you choose.": "接下来，DigUp 会查看常用文件夹及代码文件夹，估算各自所需时间；只有选定后才开始索引。",
+  "developer folder": "开发工具目录",
+  ".noindex folder": "标记为不索引的目录",
+  "cache folder": "缓存目录",
+  "excluded folder": "已排除的目录",
+  "vendored or built code": "第三方依赖或构建产物",
+  "submodule or worktree": "子模块或工作树",
   "Open Fork Releases": "打开分支发布页"
 };
   function translate(key, values = [], selected = locale) {
