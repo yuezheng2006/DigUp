@@ -244,6 +244,7 @@ struct OnboardingView: View {
                 .mask(LinearGradient(colors: [.black.opacity(0.10), .clear], startPoint: .top, endPoint: .bottom))
                 .ignoresSafeArea()
         }
+        .digupTheme()
     }
 
     private var footer: some View {

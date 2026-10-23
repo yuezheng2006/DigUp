@@ -15,6 +15,26 @@
   </nav>
   <main class="settings">
     <section class="tab" id="general" role="tabpanel">
+      <h3 id="theme-heading">Appearance</h3>
+      <div class="option">
+        <span class="text">
+          <span class="name" id="appearance-label">Appearance</span>
+          <label class="choice"><input type="radio" name="appearance" value="system"> <span id="appearance-system">Match System</span></label>
+          <label class="choice"><input type="radio" name="appearance" value="light"> <span id="appearance-light">Light</span></label>
+          <label class="choice"><input type="radio" name="appearance" value="dark"> <span id="appearance-dark">Dark</span></label>
+        </span>
+      </div>
+      <div class="option">
+        <span class="text">
+          <span class="name" id="color-theme-label">Color theme</span>
+          <label class="choice"><input type="radio" name="color-theme" value="system"> <span id="color-system">System Accent</span></label>
+          <label class="choice"><input type="radio" name="color-theme" value="moss"> <span id="color-moss">Moss</span></label>
+          <label class="choice"><input type="radio" name="color-theme" value="amber"> <span id="color-amber">Amber</span></label>
+          <label class="choice"><input type="radio" name="color-theme" value="slate"> <span id="color-slate">Slate</span></label>
+          <span class="info" id="theme-help">Choose light or dark, and an accent. Match System follows the desktop. Moss, Amber and Slate are DigUp accents.</span>
+        </span>
+      </div>
+
       <label class="option" id="login-option" hidden>
         <input type="checkbox" id="login">
         <span class="text">
@@ -161,6 +181,7 @@
     <p class="note problem" id="problem" hidden></p>
   </main>
   <script src="i18n.js"></script>
+  <script src="theme.js"></script>
   <script src="shortcut.js"></script>
   <script src="settings.js"></script>
 </body>

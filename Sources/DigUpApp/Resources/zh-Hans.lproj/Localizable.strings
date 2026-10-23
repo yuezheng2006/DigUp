@@ -633,3 +633,23 @@
 "Got it" = "知道了";
 
 "WeChat risk notice body" = "当前为能力优先：DigUp 读取本机微信缓存中的聊天与朋友圈。聊天正文留在本机；头像与朋友圈图片可能向腾讯 CDN 请求。这不是微信官方导出通道，DigUp 不能承诺账号永不被限制。请自行评估风险后使用。";
+
+"Appearance" = "外观";
+
+"Color theme" = "配色主题";
+
+"Match System" = "跟随系统";
+
+"Light" = "浅色";
+
+"Dark" = "深色";
+
+"System Accent" = "系统强调色";
+
+"Moss" = "苔绿";
+
+"Amber" = "琥珀";
+
+"Slate" = "岩灰";
+
+"Choose light or dark, and an accent. Match System follows macOS. Moss, Amber and Slate are DigUp accents; System Accent uses the Mac control color." = "可分别选择浅色／深色与强调色。「跟随系统」与 macOS 一致；苔绿、琥珀、岩灰为 DigUp 配色，「系统强调色」使用 Mac 控制色。";

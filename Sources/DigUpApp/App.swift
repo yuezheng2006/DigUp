@@ -21,12 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
-        // For testing both themes: `-forceAppearance dark` (or light).
-        switch UserDefaults.standard.string(forKey: "forceAppearance") {
-        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
-        case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        default: break
-        }
+        // Settings themes apply here; `-forceAppearance dark|light` still overrides for tests/screenshots.
+        AppThemeStore.shared.apply()
 
         let settings = AppSettings.load()
         AppLog.shared.open(in: settings.indexDirectory)

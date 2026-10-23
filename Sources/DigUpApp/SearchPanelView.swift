@@ -21,6 +21,7 @@ struct SearchPanelView: View {
         // Glass alone is too see-through over busy backgrounds.
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.75))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .digupTheme()
     }
 
     private var header: some View {

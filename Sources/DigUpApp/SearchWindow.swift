@@ -374,6 +374,7 @@ struct SearchWindowView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 820, minHeight: 520)
+        .digupTheme()
     }
 
     private var header: some View {

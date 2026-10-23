@@ -22,7 +22,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-appearance="light"]) {
     --surface: #1f1f21;
     --text: #f2f2f7;
     --secondary: #a1a1a6;
@@ -35,6 +35,35 @@
     --ember: #f2a22a;
   }
 }
+
+:root[data-appearance="light"] {
+  --surface: #fbfbfb;
+  --text: #1d1d1f;
+  --secondary: #6e6e73;
+  --tertiary: #a1a1a6;
+  --line: rgba(0, 0, 0, 0.09);
+  --selected: rgba(10, 132, 255, 0.2);
+  --chip: rgba(0, 0, 0, 0.06);
+  --mark: rgba(242, 162, 42, 0.28);
+  --link: #0a6fd8;
+}
+
+:root[data-appearance="dark"] {
+  --surface: #1f1f21;
+  --text: #f2f2f7;
+  --secondary: #a1a1a6;
+  --tertiary: #6e6e73;
+  --line: rgba(255, 255, 255, 0.1);
+  --selected: rgba(10, 132, 255, 0.32);
+  --chip: rgba(255, 255, 255, 0.09);
+  --mark: rgba(242, 162, 42, 0.35);
+  --link: #4aa3ff;
+  --ember: #f2a22a;
+}
+
+:root[data-color="moss"] { --selected: rgba(53, 102, 82, 0.28); --link: #356652; }
+:root[data-color="amber"] { --selected: rgba(242, 162, 42, 0.28); --link: #d97b1a; --mark: rgba(242, 162, 42, 0.4); }
+:root[data-color="slate"] { --selected: rgba(90, 110, 130, 0.28); --link: #5a6e82; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }

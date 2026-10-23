@@ -602,7 +602,17 @@ const DigUpI18n = (() => {
   "excluded folder": "已排除的目录",
   "vendored or built code": "第三方依赖或构建产物",
   "submodule or worktree": "子模块或工作树",
-  "Open Fork Releases": "打开分支发布页"
+  "Open Fork Releases": "打开分支发布页",
+  "Appearance": "外观",
+  "Color theme": "配色主题",
+  "Match System": "跟随系统",
+  "Light": "浅色",
+  "Dark": "深色",
+  "System Accent": "系统强调色",
+  "Moss": "苔绿",
+  "Amber": "琥珀",
+  "Slate": "岩灰",
+  "Choose light or dark, and an accent. Match System follows the desktop. Moss, Amber and Slate are DigUp accents.": "可分别选择浅色／深色与强调色。「跟随系统」与桌面一致；苔绿、琥珀、岩灰为 DigUp 配色。"
 };
   function translate(key, values = [], selected = locale) {
     const template = selected === "zh-Hans" ? (chinese[key] ?? key) : key;

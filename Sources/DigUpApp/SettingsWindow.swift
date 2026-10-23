@@ -191,6 +191,7 @@ private struct SettingsPane: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(width: 580, height: height.map { min($0, Self.tallest) })
+        .digupTheme()
     }
 
     /// The screen's room below the menu bar, less the window's title bar and tabs and a margin.
@@ -201,9 +202,26 @@ private struct SettingsPane: View {
 
 private struct GeneralSettings: View {
     @Bindable var state: SettingsState
+    @Bindable private var theme = AppThemeStore.shared
 
     var body: some View {
         Form {
+            Section {
+                Picker(L("Appearance"), selection: $theme.appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                Picker(L("Color theme"), selection: $theme.colorTheme) {
+                    ForEach(ColorTheme.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                Text(L("Choose light or dark, and an accent. Match System follows macOS. Moss, Amber and Slate are DigUp accents; System Accent uses the Mac control color."))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Section {
                 LabeledContent {
                     ShortcutRecorder(combo: state.model.hotkey, apply: { state.app.setHotkey($0) },

@@ -188,6 +188,7 @@ struct MenuStatusView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 5)
         .frame(width: 280, alignment: .leading)
+        .digupTheme()
     }
 
     private var detail: String? {

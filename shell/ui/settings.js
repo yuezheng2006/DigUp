@@ -40,7 +40,42 @@ for (const button of document.querySelectorAll("#tabs button")) button.onclick =
 
 // MARK: General
 
+function renderTheme() {
+  const current = DigUpTheme.read();
+  for (const choice of document.querySelectorAll('input[name="appearance"]')) {
+    choice.checked = choice.value === current.appearance;
+  }
+  for (const choice of document.querySelectorAll('input[name="color-theme"]')) {
+    choice.checked = choice.value === current.color;
+  }
+  $("theme-heading").textContent = t("Appearance");
+  $("appearance-label").textContent = t("Appearance");
+  $("appearance-system").textContent = t("Match System");
+  $("appearance-light").textContent = t("Light");
+  $("appearance-dark").textContent = t("Dark");
+  $("color-theme-label").textContent = t("Color theme");
+  $("color-system").textContent = t("System Accent");
+  $("color-moss").textContent = t("Moss");
+  $("color-amber").textContent = t("Amber");
+  $("color-slate").textContent = t("Slate");
+  $("theme-help").textContent = t("Choose light or dark, and an accent. Match System follows the desktop. Moss, Amber and Slate are DigUp accents.");
+}
+
+for (const choice of document.querySelectorAll('input[name="appearance"]')) {
+  choice.addEventListener("change", () => {
+    DigUpTheme.setAppearance(choice.value);
+    renderTheme();
+  });
+}
+for (const choice of document.querySelectorAll('input[name="color-theme"]')) {
+  choice.addEventListener("change", () => {
+    DigUpTheme.setColor(choice.value);
+    renderTheme();
+  });
+}
+
 function renderGeneral() {
+  renderTheme();
   $("login-option").hidden = !info.canOpenAtLogin;
   $("login").checked = info.openAtLogin;
   $("tray-click-option").hidden = !info.canChooseTrayClick;
