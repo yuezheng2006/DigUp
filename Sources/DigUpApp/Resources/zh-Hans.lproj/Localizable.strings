@@ -629,3 +629,7 @@
 "excluded folder" = "已排除的目录";
 "vendored or built code" = "第三方依赖或构建产物";
 "submodule or worktree" = "子模块或工作树";
+
+"Got it" = "知道了";
+
+"WeChat risk notice body" = "当前为能力优先：DigUp 读取本机微信缓存中的聊天与朋友圈。聊天正文留在本机；头像与朋友圈图片可能向腾讯 CDN 请求。这不是微信官方导出通道，DigUp 不能承诺账号永不被限制。请自行评估风险后使用。";

@@ -3,12 +3,32 @@ import DigUpKit
 
 struct WeChatView: View {
     @Bindable var state: WeChatState
+    @AppStorage("wechat.riskNoticeDismissed") private var riskNoticeDismissed = false
     var body: some View {
         VStack(spacing: 0) {
             Picker(L("WeChat"), selection: $state.showsMoments) {
                 Text(L("Conversations")).tag(false)
                 Text(L("Moments feed")).tag(true)
-            }.pickerStyle(.segmented).frame(width: 240).padding(10)
+            }.pickerStyle(.segmented).frame(width: 240).padding(.top, 10).padding(.bottom, 6)
+            if !riskNoticeDismissed {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                    Text(L("WeChat risk notice body"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button(L("Got it")) { riskNoticeDismissed = true }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.secondary.opacity(0.08))
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
+                .accessibilityLabel(L("WeChat risk notice body"))
+            }
             if state.showsMoments { WeChatMomentsView() } else { WeChatChatsView(state: state) }
         }
     }

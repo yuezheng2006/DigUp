@@ -629,3 +629,7 @@
 "excluded folder" = "excluded folder";
 "vendored or built code" = "vendored or built code";
 "submodule or worktree" = "submodule or worktree";
+
+"Got it" = "Got it";
+
+"WeChat risk notice body" = "Capability-first mode: DigUp reads local WeChat caches for chats and Moments. Chat text stays on this Mac; avatars and Moments images may load from Tencent CDN. This is not an official WeChat export, and DigUp cannot promise accounts will never be restricted. Use at your own risk.";
