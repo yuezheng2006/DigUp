@@ -6,10 +6,20 @@ struct WeChatView: View {
     @AppStorage("wechat.riskNoticeDismissed") private var riskNoticeDismissed = false
     var body: some View {
         VStack(spacing: 0) {
-            Picker(L("WeChat"), selection: $state.showsMoments) {
-                Text(L("Conversations")).tag(false)
-                Text(L("Moments feed")).tag(true)
-            }.pickerStyle(.segmented).frame(width: 240).padding(.top, 10).padding(.bottom, 6)
+            HStack {
+                Spacer(minLength: 0)
+                Picker(L("WeChat"), selection: $state.showsMoments) {
+                    Text(L("Conversations")).tag(false)
+                    Text(L("Moments feed")).tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 220)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
             if !riskNoticeDismissed {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
@@ -26,7 +36,7 @@ struct WeChatView: View {
                 .padding(.vertical, 8)
                 .background(Color.secondary.opacity(0.08))
                 .padding(.horizontal, 10)
-                .padding(.bottom, 6)
+                .padding(.bottom, 4)
                 .accessibilityLabel(L("WeChat risk notice body"))
             }
             if state.showsMoments { WeChatMomentsView() } else { WeChatChatsView(state: state) }

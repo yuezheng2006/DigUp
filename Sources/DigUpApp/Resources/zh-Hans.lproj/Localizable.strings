@@ -543,6 +543,34 @@
 
 "Exported {0} messages · {1} images · {2} unavailable" = "已导出 {0} 条消息 · {1} 张图片 · {2} 张不可用";
 
+"Exported {0} messages · {1} active days · {2} images · {3} unavailable" = "已导出 {0} 条消息 · {1} 个活跃日 · {2} 张图片 · {3} 张不可用";
+
+"Messages in range" = "区间消息数";
+
+"Active days" = "活跃日";
+
+"Top sender in range" = "区间最高频发言";
+
+"Overview covers loaded messages only; narrow the range or export for the full interval." = "概览仅含已加载消息；缩小日期或导出可覆盖完整区间。";
+
+"Loaded the first batch for this range. Up to about one month is supported; narrow the dates if you need every message." = "已加载本区间前若干页。约一个月内的消息可完整拉取；若仍缺条请再缩小日期。";
+
+"Inline playback is not available yet; export still keeps a typed label." = "暂不支持应用内播放；导出仍会保留类型标签。";
+
+"Reveal in Finder" = "在访达中显示";
+
+"Open File" = "打开文件";
+
+"Local file not found. Open it once in WeChat so it downloads under msg/file." = "本机未找到该文件。请先在微信里打开/下载一次，文件会落在 msg/file 目录。";
+
+"Custom range" = "自定义区间";
+
+"A folder with text, HTML report, linked images and files. Unavailable media are marked." = "导出文件夹含文本、HTML 报告、图片与文件；不可用的媒体会标记。";
+
+"This chat can’t be opened (WeChat placeholder or missing contact). Pick another conversation." = "打不开这个会话（微信系统占位或联系人缺失）。请换一个会话。";
+
+"Media or attachment preview is not available yet." = "此消息已显示文字摘要；图片可点「查看图片」，视频/语音暂不支持应用内播放。";
+
 "Start Indexing" = "开始索引";
 
 "Start indexing" = "开始索引";

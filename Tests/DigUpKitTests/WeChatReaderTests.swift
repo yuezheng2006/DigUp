@@ -165,6 +165,26 @@ import Testing
         #expect(result.messages.isEmpty)
         #expect(result.statuses == ["possibly_stale"])
     }
+    @Test func sessionsHideSyntheticHoldersAndTitleNamelessGroups() throws {
+        #expect(WeChatReader.isSyntheticSessionID("brandservicesessionholder"))
+        #expect(WeChatReader.isSyntheticSessionID("brandsessionholder"))
+        #expect(WeChatReader.isSyntheticSessionID("@placeholder_foldgroup"))
+        #expect(!WeChatReader.isSyntheticSessionID("wxid_1a1gwd3n68pq22"))
+        let reader = WeChatReader { _ in
+            Data(#"""
+            {"sessions":[
+              {"username":"brandservicesessionholder","chat":"brandservicesessionholder","chat_type":"private","timestamp":1},
+              {"username":"56307292671@chatroom","chat":"56307292671@chatroom","chat_type":"group","summary":"以后用起来 把token都花完","timestamp":2},
+              {"username":"wxid_peer","chat":"何继成","chat_type":"private","timestamp":3}
+            ]}
+            """#.utf8)
+        }
+        let sessions = try reader.sessions()
+        #expect(sessions.map(\.id) == ["wxid_peer", "56307292671@chatroom"])
+        #expect(sessions.first { $0.id.hasSuffix("@chatroom") }?.name == "以后用起来 把token都花完")
+        #expect(sessions.first { $0.id == "wxid_peer" }?.name == "何继成")
+    }
+
     @Test func groupAndIndividualWithSameNameStayIsolated() throws {
         let timestamp = WeChatReader.date("2026-10-20", timeZone: zone)!.timeIntervalSince1970 + 60
         let reader = WeChatReader { args in

@@ -52,21 +52,51 @@ let portableTargets: [Target] = [
 #endif
 
 #if os(macOS)
-let appProducts: [Product] = [.executable(name: "DigUpApp", targets: ["DigUpApp"])]
+let appProducts: [Product] = [
+    .executable(name: "DigUpApp", targets: ["DigUpApp"]),
+    // Share extension binary; build.sh nests five .appex copies into DigUp.app/Contents/PlugIns.
+    .executable(name: "DigUpShare", targets: ["DigUpShare"]),
+    .library(name: "DigUpShareCore", targets: ["DigUpShareCore"]),
+]
 let appDependencies: [Package.Dependency] = [
     // In-app updates (the app only). build.sh embeds the framework in Contents/Frameworks and signs it.
     .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
 ]
 let appTargets: [Target] = [
+    // Shared inbox + WeChat forward-ZIP parsing for DigUpApp and DigUpShare.
+    // Built with -application-extension so the compiler catches APIs unavailable inside an appex.
+    .target(
+        name: "DigUpShareCore",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+            .unsafeFlags(["-application-extension"]),
+        ]
+    ),
     // The menubar + hotkey app. build.sh wraps it into build.noindex/DigUp.app. (The product can't be called
     // "DigUp": on a case-insensitive disk it would collide with the `digup` CLI binary.)
     .executableTarget(
         name: "DigUpApp",
-        dependencies: ["DigUpKit", .product(name: "Sparkle", package: "Sparkle")],
+        dependencies: ["DigUpKit", "DigUpShareCore", .product(name: "Sparkle", package: "Sparkle")],
         resources: [.process("Resources")],
         swiftSettings: [.defaultIsolation(MainActor.self)],
         linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
     ),
+    // WeChat 「合并转发 → 转发到其他应用」 share-services entry (NSExtensionMain).
+    .executableTarget(
+        name: "DigUpShare",
+        dependencies: ["DigUpShareCore"],
+        swiftSettings: [
+            .swiftLanguageMode(.v5),
+            .unsafeFlags(["-application-extension"]),
+        ],
+        linkerSettings: [
+            .unsafeFlags([
+                "-Xlinker", "-e", "-Xlinker", "_NSExtensionMain",
+                "-Xlinker", "-application_extension",
+            ])
+        ]
+    ),
+    .testTarget(name: "DigUpShareCoreTests", dependencies: ["DigUpShareCore"]),
 ]
 #else
 let appProducts: [Product] = []

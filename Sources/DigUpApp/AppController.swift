@@ -62,6 +62,8 @@ final class AppController {
         searchWindow = SearchWindowController(app: self)
         settingsWindow = SettingsWindowController(app: self)
         wechatWindow = WeChatWindowController(app: self)
+        // WeChat 4.1.13+「合并转发 → 转发到其他应用」share extension inbox.
+        WeChatShareInboxController.shared.start()
         statusMenu = StatusMenuController(model: model)
         statusMenu.onSearch = { [weak self] in self?.panel.show() }
         statusMenu.onOpenWindow = { [weak self] in self?.showSearchWindow() }

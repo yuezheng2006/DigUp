@@ -5,5 +5,10 @@
 	<!-- Opening a recording at the moment that matched asks QuickTime Player to go there (macOS asks you once). -->
 	<key>com.apple.security.automation.apple-events</key>
 	<true/>
+	<!-- Share extension inbox (WeChat 合并转发 → DigUp Plus). Team-prefixed App Group. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>3396ALL92C.group.com.yuezheng.digupplus.shared</string>
+	</array>
 </dict>
 </plist>

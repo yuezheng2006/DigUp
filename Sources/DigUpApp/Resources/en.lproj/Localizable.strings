@@ -543,6 +543,32 @@
 
 "Exported {0} messages · {1} images · {2} unavailable" = "Exported {0} messages · {1} images · {2} unavailable";
 
+"Exported {0} messages · {1} active days · {2} images · {3} unavailable" = "Exported {0} messages · {1} active days · {2} images · {3} unavailable";
+
+"Messages in range" = "Messages in range";
+
+"Active days" = "Active days";
+
+"Top sender in range" = "Top sender in range";
+
+"Overview covers loaded messages only; narrow the range or export for the full interval." = "Overview covers loaded messages only; narrow the range or export for the full interval.";
+
+"Loaded the first batch for this range. Up to about one month is supported; narrow the dates if you need every message." = "Loaded the first batch for this range. Up to about one month is supported; narrow the dates if you need every message.";
+
+"Inline playback is not available yet; export still keeps a typed label." = "Inline playback is not available yet; export still keeps a typed label.";
+
+"Reveal in Finder" = "Reveal in Finder";
+
+"Open File" = "Open File";
+
+"Local file not found. Open it once in WeChat so it downloads under msg/file." = "Local file not found. Open it once in WeChat so it downloads under msg/file.";
+
+"Custom range" = "Custom range";
+
+"A folder with text, HTML report, linked images and files. Unavailable media are marked." = "A folder with text, HTML report, linked images and files. Unavailable media are marked.";
+
+"This chat can’t be opened (WeChat placeholder or missing contact). Pick another conversation." = "This chat can’t be opened (WeChat placeholder or missing contact). Pick another conversation.";
+
 "Start Indexing" = "Start Indexing";
 
 "Start indexing" = "Start indexing";

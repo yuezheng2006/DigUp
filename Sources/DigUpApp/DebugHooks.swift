@@ -309,7 +309,13 @@ enum DebugHooks {
             case "wechat", "wechat-moments":
                 app.wechatWindow.state.showsMoments = parts[0] == "wechat-moments"
                 app.wechatWindow.show()
-                loaded = { parts[0] != "wechat-moments" || Date().timeIntervalSince(started) > 5 }
+                // Sessions + contact profiles (for CDN avatars); moments needs a bit longer for feed images.
+                loaded = {
+                    let state = app.wechatWindow.state
+                    if parts[0] == "wechat-moments" { return Date().timeIntervalSince(started) > 5 }
+                    return !state.sessions.isEmpty && !state.profiles.people.isEmpty
+                        && Date().timeIntervalSince(started) > 2.5
+                }
                 draw = { try app.wechatWindow.snapshot(to: $0) }
                 close = {}
             case "settings" where parts.count > 1 && parts[1] == "addcode":

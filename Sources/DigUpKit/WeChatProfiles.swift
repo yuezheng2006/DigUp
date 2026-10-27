@@ -27,6 +27,19 @@ public struct WeChatProfiles: Sendable {
     public var people: [String: WeChatProfile] = [:]
     public var selfID: String?
 
+    /// Usernames / nick / alias / remark that should count as "me" in exports and UI.
+    public var selfAliases: Set<String> {
+        guard let id = selfID else { return [] }
+        var keys: Set<String> = [id]
+        if let profile = people[id] {
+            for value in [profile.alias, profile.remark, profile.nickName, profile.preferredName] {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { keys.insert(trimmed) }
+            }
+        }
+        return keys
+    }
+
     /// Read existing wx metadata only; never open encrypted databases or acquire keys.
     public static func load(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Self {
         var result = Self()
@@ -60,8 +73,17 @@ public struct WeChatProfiles: Sendable {
             defer { sqlite3_close(db) }
             sqlite3_busy_timeout(db, 5000)
             var stmt: OpaquePointer?
-            let rich = "SELECT username, alias, remark, nick_name, small_head_url FROM contact LIMIT 50000"
-            let basic = "SELECT username, small_head_url FROM contact LIMIT 50000"
+            // Prefer small_head_url; some rows only keep big_head_url (rare for rooms).
+            let rich = """
+                SELECT username, alias, remark, nick_name,
+                       COALESCE(NULLIF(small_head_url, ''), NULLIF(big_head_url, ''))
+                FROM contact LIMIT 50000
+                """
+            let basic = """
+                SELECT username,
+                       COALESCE(NULLIF(small_head_url, ''), NULLIF(big_head_url, ''))
+                FROM contact LIMIT 50000
+                """
             let richOK = sqlite3_prepare_v2(db, rich, -1, &stmt, nil) == SQLITE_OK
             if !richOK {
                 stmt = nil
@@ -77,10 +99,10 @@ public struct WeChatProfiles: Sendable {
                 let alias: String, remark: String, nick: String, avatar: URL?
                 if richOK {
                     alias = col(1); remark = col(2); nick = col(3)
-                    avatar = sqlite3_column_text(stmt, 4).flatMap { URL(string: String(cString: $0)) }
+                    avatar = URL(string: col(4))
                 } else {
                     alias = ""; remark = ""; nick = ""
-                    avatar = sqlite3_column_text(stmt, 1).flatMap { URL(string: String(cString: $0)) }
+                    avatar = URL(string: col(1))
                 }
                 result.people[id] = WeChatProfile(
                     username: id, alias: alias, remark: remark, nickName: nick,
@@ -99,6 +121,10 @@ public struct WeChatMember: Sendable, Equatable {
     public let contactDisplay: String
     public let display: String
     public let groupNickname: String
+    public init(username: String, contactDisplay: String, display: String, groupNickname: String) {
+        self.username = username; self.contactDisplay = contactDisplay
+        self.display = display; self.groupNickname = groupNickname
+    }
 }
 
 /// Maps raw history `sender` strings (wxid / alias / nick) to WeChat-visible names (备注优先)
@@ -148,8 +174,18 @@ public struct WeChatNameDirectory: Sendable {
         for member in members {
             let name = prefer(member.username, contactDisplay: member.contactDisplay, display: member.display)
             labels[member.username] = name
+            // History often sends 备注/展示名 as `sender` — reverse-map when unique.
+            if !name.isEmpty, name != member.username {
+                soft[name, default: []].append((name, member.username))
+            }
+            for key in [member.contactDisplay, member.display] {
+                let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty, trimmed != member.username {
+                    soft[trimmed, default: []].append((name, member.username))
+                }
+            }
             if let profile = profiles.people[member.username] {
-                for key in [profile.alias, profile.nickName] where !key.isEmpty {
+                for key in [profile.alias, profile.nickName, profile.remark] where !key.isEmpty {
                     soft[key, default: []].append((name, member.username))
                 }
             }
@@ -175,8 +211,9 @@ public struct WeChatNameDirectory: Sendable {
         for (id, profile) in profiles.people {
             if labels[id] == nil { labels[id] = profile.preferredName }
             if members.isEmpty {
-                for key in [profile.alias, profile.nickName] where !key.isEmpty {
-                    globalSoft[key, default: []].append((profile.preferredName, id))
+                let preferred = profile.preferredName
+                for key in [profile.alias, profile.nickName, profile.remark, preferred] where !key.isEmpty {
+                    globalSoft[key, default: []].append((preferred, id))
                 }
             }
         }

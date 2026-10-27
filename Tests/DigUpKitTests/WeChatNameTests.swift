@@ -39,6 +39,9 @@ import Testing
         #expect(names.displayName(for: "wxid_mike") == "Michael")
         #expect(names.username(for: "Michael") == "wxid_mike")
         #expect(names.username(for: "csworld") == "csworld")
+        // History `sender` is often the remark / contact_display, not username.
+        #expect(names.username(for: "雷石武剑") == "csworld")
+        #expect(names.displayName(for: "雷石武剑") == "雷石武剑")
     }
 
     @Test func directoryResolvesAvatarFromNickOrUsername() {
@@ -47,16 +50,38 @@ import Testing
         profiles.people["wxid_mike"] = WeChatProfile(
             username: "wxid_mike", alias: "", remark: "", nickName: "Michael",
             avatar: avatar, isEnterprise: false)
+        profiles.people["csworld"] = WeChatProfile(
+            username: "csworld", alias: "", remark: "雷石武剑", nickName: "Jacky",
+            avatar: URL(string: "https://wx.qlogo.cn/mmhead/jacky"), isEnterprise: false)
         profiles.people["room@chatroom"] = WeChatProfile(
             username: "room@chatroom", alias: "", remark: "", nickName: "测试群",
             avatar: URL(string: "https://wx.qlogo.cn/mmcrhead/group"), isEnterprise: false)
         let members = [
-            WeChatMember(username: "wxid_mike", contactDisplay: "Michael", display: "Michael", groupNickname: "")
+            WeChatMember(username: "wxid_mike", contactDisplay: "Michael", display: "Michael", groupNickname: ""),
+            WeChatMember(username: "csworld", contactDisplay: "雷石武剑", display: "雷石武剑", groupNickname: "")
         ]
         let names = WeChatNameDirectory.build(members: members, profiles: profiles)
         #expect(names.avatarURL(for: "Michael", in: profiles) == avatar)
         #expect(names.avatarURL(for: "wxid_mike", in: profiles) == avatar)
+        #expect(names.avatarURL(for: "雷石武剑", in: profiles)?.absoluteString.contains("jacky") == true)
         #expect(profiles.people["room@chatroom"]?.avatar?.absoluteString.contains("mmcrhead") == true)
+    }
+
+    @Test func directoryMapsPrivatePeerWithoutMembersList() {
+        let avatar = URL(string: "https://wx.qlogo.cn/mmhead/zhou")!
+        var profiles = WeChatProfiles()
+        profiles.people["wxid_peer"] = WeChatProfile(
+            username: "wxid_peer", alias: "xzdgsZQF", remark: "周青峰", nickName: "高山",
+            avatar: avatar, isEnterprise: false)
+        let peer = WeChatMember(
+            username: "wxid_peer", contactDisplay: "周青峰", display: "周青峰", groupNickname: "")
+        let names = WeChatNameDirectory.build(members: [peer], profiles: profiles)
+        #expect(names.displayName(for: "wxid_peer") == "周青峰")
+        #expect(names.avatarURL(for: "wxid_peer", in: profiles) == avatar)
+        // Empty-members path (wx members fails on private chats): still resolve via profiles.
+        let global = WeChatNameDirectory.build(members: [], profiles: profiles)
+        #expect(global.displayName(for: "wxid_peer") == "周青峰")
+        #expect(global.avatarURL(for: "周青峰", in: profiles) == avatar)
     }
 
     @Test func directoryIgnoresSharedGroupNicknameQuirk() {

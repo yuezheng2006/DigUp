@@ -2,14 +2,23 @@
 
 本 fork 新增菜单栏和「文件」菜单中的「微信消息…」。入口位于主窗口类别栏「音频」后面的「微信」按钮中；菜单快捷入口也切换到同一主窗口。这是只读页面，不会把消息写入文件索引、发送微信或调用云端模型。
 
-## 产品路线：能力优先
+## 产品路线：能力优先 · Mac 先发
 
-已确认采用**能力优先**，而不是对齐 WeChatBridge 的「仅官方合并转发导出」路线：
+已确认采用**能力优先**，而不是对齐 WeChatBridge 的「仅官方合并转发导出」路线；**平台上先主打 macOS**：
 
-- **保留**：本机缓存／库读取、会话与消息浏览、朋友圈视图、按需媒体预览、Skill／CLI 只读查询。
+- **保留**：本机缓存／库读取、会话与消息浏览、朋友圈视图、按需媒体预览、文件消息关联本机 `msg/file/YYYY-MM/` 路径、导出（含 `stats.html`、`files/`、`messages.json` / `corpus.jsonl`）、Skill／CLI 只读查询（均以 Mac + `wx` 为交付面）。
 - **说明**：聊天正文、会话与朋友圈文字来自本机已落地缓存；头像与朋友圈图片可能使用本地凭据请求腾讯 CDN。应用不把聊天正文上传到 DigUp 服务器。
 - **不做的承诺**：本地有数据 ≠ 腾讯授权；不能承诺「不违规、不封号」。微信界面首次进入会展示可关闭的风险提示。
-- **对照**：更低风险的做法是只处理用户在微信内主动「合并转发」导出的 ZIP（参见 [WeChatBridge](https://github.com/freestylefly/WeChatBridge)）。本产品为保留全局检索与朋友圈能力，明确选择更高平台协议风险。
+- **平台边界**：近期不做 Windows/Linux 微信界面，也不做 PC 端数据库解密／内存取 key（与《留痕》等 Win 工具路线区分）。上游 DigUp 的跨平台文件搜索仍按其自身节奏；微信 Plus 能力与之解耦。
+- **对照**：更低风险的做法是只处理用户在微信内主动「合并转发」导出的 ZIP（参见 [WeChatBridge](https://github.com/freestylefly/WeChatBridge)、[Dukou 渡口](https://github.com/qzz0518/Dukou)）。本产品为保留全局检索与朋友圈能力，仍主打 `wx` 读取；**同时** DigUp Plus 已接入 Dukou 同款官方分享路径（见下节），两条能力并存。
+
+## 微信「合并转发」分享扩展（DigUp Plus · 参考 Dukou）
+
+微信 macOS 4.1.13+ 多选消息 →「合并转发」→「转发到其他应用」会打开系统分享菜单。DigUp Plus 嵌入五个 `com.apple.share-services` 扩展（暂存 / Claude / Codex / 剪贴板 / 自定义），解析微信官方 ZIP（`聊天记录.txt` + 附件），本地 HTML 预览，并可把文件投递给 Claude / Codex。
+
+- 实现：`Sources/DigUpShare` + `Sources/DigUpShareCore`；`build.sh` 装入 `DigUp.app/Contents/PlugIns/*.appex`
+- App Group：`3396ALL92C.group.com.yuezheng.digupplus.shared`（需在 Apple Developer → Identifiers 登记同名 App Group，并用 Team `3396ALL92C` 签名后，扩展才会稳定出现在微信分享列表）
+- 参考实现：[qzz0518/Dukou](https://github.com/qzz0518/Dukou)（MIT）；本仓库为 DigUp 品牌重写与装配，不捆绑 Dukou 二进制
 
 ## 使用
 

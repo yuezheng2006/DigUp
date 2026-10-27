@@ -24,17 +24,23 @@ fi
 # llama.cpp, the embedding runtime, linked into the helper (only rebuilt when its tag or patch changes).
 scripts/build-llama.sh
 
-# Both executables: the app, and the `digup` CLI, which the app runs as its indexing helper and query encoder.
+# App, CLI, and WeChat share-extension binary (nested into PlugIns/ below).
 swift build -c release --product DigUpApp
 swift build -c release --product digup
+swift build -c release --product DigUpShare
 BIN_DIR="$(swift build -c release --show-bin-path)"
+
+# DigUp Plus share slots (WeChat 合并转发 → 系统分享菜单). Pattern from Dukou.
+# shellcheck source=scripts/share-slots.sh
+source scripts/share-slots.sh
+APP_GROUP="${APP_GROUP:-3396ALL92C.group.com.yuezheng.digupplus.shared}"
 
 # The app icon ("One space", moss; Resources/AppIcon/README.md): macOS 26 draws the layered AppIcon.icon (compiled into
 # Assets.car), older macOS the .icns. Without the former, macOS 26 shows the icon shrunk inside a gray square.
 ICON="Resources/AppIcon.icns"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources" "$APP/Contents/PlugIns"
 # The binary is DigUpApp in SwiftPM (it can't share a name with the `digup` CLI on a case-insensitive disk).
 cp "$BIN_DIR/DigUpApp" "$APP/Contents/MacOS/$APP_NAME"
 # The indexing helper lives in Helpers/: next to DigUp in MacOS/ it would collide on a case-insensitive disk.
@@ -42,6 +48,43 @@ cp "$BIN_DIR/digup" "$APP/Contents/Helpers/digup"
 cp -R "$BIN_DIR/DigUp_DigUpApp.bundle" "$APP/Contents/Resources/"
 cp -R Resources/zh-Hans.lproj "$APP/Contents/Resources/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :DUAppGroupIdentifier $APP_GROUP" "$APP/Contents/Info.plist" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c "Add :DUAppGroupIdentifier string $APP_GROUP" "$APP/Contents/Info.plist"
+
+# Share extension must enter at NSExtensionMain (Package.swift linker -e). Fail closed if dropped.
+if ! nm -u "$BIN_DIR/DigUpShare" | grep -Fq '_NSExtensionMain'; then
+  echo "DigUpShare is not linked against _NSExtensionMain; check Package.swift linker flags" >&2
+  exit 1
+fi
+
+APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+BUILD_NUMBER_PLIST="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
+APPEX_PATHS=()
+for SLOT_ROW in "${SHARE_SLOTS[@]}"; do
+  IFS='|' read -r SLOT APPEX_NAME ID_SUFFIX SLOT_ACTION DISPLAY_NAME <<< "$SLOT_ROW"
+  SLOT_APPEX="$APP/Contents/PlugIns/$APPEX_NAME.appex"
+  mkdir -p "$SLOT_APPEX/Contents/MacOS" "$SLOT_APPEX/Contents/Resources"
+  cp "$BIN_DIR/DigUpShare" "$SLOT_APPEX/Contents/MacOS/$APPEX_NAME"
+  cp Resources/Share-Info.plist "$SLOT_APPEX/Contents/Info.plist"
+  PLIST="$SLOT_APPEX/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APPEX_NAME" "$PLIST"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $APP_ID.$ID_SUFFIX" "$PLIST"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $DISPLAY_NAME" "$PLIST"
+  /usr/libexec/PlistBuddy -c "Set :DUShareAction $SLOT_ACTION" "$PLIST"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER_PLIST" "$PLIST"
+  /usr/libexec/PlistBuddy -c "Set :DUAppGroupIdentifier $APP_GROUP" "$PLIST"
+  SLOT_LOCALIZATIONS="Resources/ShareLocalizations/$SLOT"
+  if [[ -d "$SLOT_LOCALIZATIONS" ]]; then
+    shopt -s nullglob
+    for LPROJ in "$SLOT_LOCALIZATIONS"/*.lproj; do
+      ditto "$LPROJ" "$SLOT_APPEX/Contents/Resources/$(basename "$LPROJ")"
+    done
+    shopt -u nullglob
+  fi
+  APPEX_PATHS+=("$SLOT_APPEX")
+done
 xcrun actool --compile "$APP/Contents/Resources" --platform macosx --target-device mac --minimum-deployment-target 14.0 \
   --app-icon AppIcon --output-partial-info-plist "$(mktemp -d)/AppIcon.plist" --enable-on-demand-resources NO \
   --development-region en "$PWD/Resources/AppIcon/AppIcon.icon" > /dev/null
@@ -75,14 +118,23 @@ codesign --force --sign "$IDENTITY" --options runtime $TIMESTAMP "$APP/Contents/
 for code in "$FW/Versions/B/Autoupdate" "$FW/Versions/B/Updater.app" "$FW"; do
   codesign --force --sign "$IDENTITY" --options runtime $TIMESTAMP "$code"
 done
+
+# Share extensions: sandboxed + App Group. Sign each appex before the outer app.
+SHARE_ENTITLEMENTS="$(mktemp -d)/DigUpShare.entitlements"
+cp Resources/DigUpShare.entitlements "$SHARE_ENTITLEMENTS"
+/usr/libexec/PlistBuddy -c "Set :com.apple.security.application-groups:0 $APP_GROUP" "$SHARE_ENTITLEMENTS"
+for APPEX in "${APPEX_PATHS[@]}"; do
+  codesign --force --sign "$IDENTITY" --options runtime $TIMESTAMP --entitlements "$SHARE_ENTITLEMENTS" "$APPEX"
+done
+
 # An ad-hoc build has no team, so the hardened runtime's library validation would refuse its (ad-hoc) Sparkle: such
 # builds (from source, without a signing identity) may load it anyway. Signed builds and releases keep validation.
-ENTITLEMENTS=Resources/DigUp.entitlements
+APP_ENT_COPY="$(mktemp -d)/DigUp.entitlements"
+cp Resources/DigUp.entitlements "$APP_ENT_COPY"
 if [[ "$IDENTITY" == - ]]; then
-  ENTITLEMENTS="$(mktemp -d)/DigUp.entitlements"
-  cp Resources/DigUp.entitlements "$ENTITLEMENTS"
-  /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "$ENTITLEMENTS"
+  /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "$APP_ENT_COPY"
 fi
-codesign --force --sign "$IDENTITY" --options runtime $TIMESTAMP --entitlements "$ENTITLEMENTS" "$APP"
-echo "Signed $([[ "$IDENTITY" == - ]] && echo ad-hoc || echo "with \"$IDENTITY\"") (hardened runtime)"
+/usr/libexec/PlistBuddy -c "Set :com.apple.security.application-groups:0 $APP_GROUP" "$APP_ENT_COPY"
+codesign --force --sign "$IDENTITY" --options runtime $TIMESTAMP --entitlements "$APP_ENT_COPY" "$APP"
+echo "Signed $([[ "$IDENTITY" == - ]] && echo ad-hoc || echo "with \"$IDENTITY\"") (hardened runtime); share slots ${#APPEX_PATHS[@]}"
 echo "Built $APP"

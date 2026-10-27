@@ -12,7 +12,8 @@ public enum WeChatMedia {
     public static func allowed(_ url: URL) -> Bool {
         guard url.user == nil, url.password == nil, url.port == nil || url.port == 443,
               let host = url.host?.lowercased(), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return false }
-        return ["qpic.cn", "qlogo.cn"].contains { host == $0 || host.hasSuffix("." + $0) }
+        // qlogo / qpic CDN plus enterprise mmhead hosts (c2c/hk.wechat.com).
+        return ["qpic.cn", "qlogo.cn", "wechat.com"].contains { host == $0 || host.hasSuffix("." + $0) }
     }
     public static func image(url: URL, media: WeChatMomentMedia? = nil) async throws -> Data {
         guard allowed(url), var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { throw WeChatReadError.invalidResponse }
@@ -23,8 +24,10 @@ public enum WeChatMedia {
         parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         guard let target = parts.url else { throw WeChatReadError.invalidResponse }
         let (stream, response) = try await session.bytes(from: target)
+        // expectedContentLength is -1 when the CDN omits Content-Length.
+        let length = (response as? HTTPURLResponse)?.expectedContentLength ?? -1
         guard let response = response as? HTTPURLResponse, response.statusCode == 200,
-              response.expectedContentLength <= 8 * 1024 * 1024 else { throw WeChatReadError.invalidResponse }
+              length < 0 || length <= 8 * 1024 * 1024 else { throw WeChatReadError.invalidResponse }
         var data = Data()
         for try await byte in stream {
             try Task.checkCancellation()

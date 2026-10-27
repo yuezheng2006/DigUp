@@ -40,6 +40,406 @@ public struct WeChatExportResult: Sendable {
     public let messages: Int
     public let images: Int
     public let unavailableImages: Int
+    public let stats: WeChatConversationStats
+    public init(messages: Int, images: Int, unavailableImages: Int,
+                stats: WeChatConversationStats = .empty) {
+        self.messages = messages; self.images = images
+        self.unavailableImages = unavailableImages; self.stats = stats
+    }
+}
+
+/// Resolve WeChat 「文件」messages to the local download under `msg/file/YYYY-MM/`.
+/// `wx attachments` only covers images; file bodies stay on disk beside `db_storage`.
+public enum WeChatFileLocator {
+    /// Filename from wx content like `[文件] uuid.txt (314 B, txt)` or DigUp plain `[文件 / File] …`.
+    public static func parseFilename(from content: String) -> String? {
+        var text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        var matched = false
+        for prefix in ["[文件 / File]", "[文件]"] {
+            if text.hasPrefix(prefix) {
+                text = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                matched = true
+                break
+            }
+        }
+        guard matched, !text.isEmpty else { return nil }
+        if let range = text.range(of: " (") {
+            text = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard !text.isEmpty, !text.contains("/"), !text.contains("\\"),
+              text != "." && text != "..", !text.hasPrefix("."),
+              text.count <= 240 else { return nil }
+        return text
+    }
+
+    /// Account root: parent of `db_dir` from `~/.wx-cli/config.json`.
+    public static func accountRoot(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
+        let config = home.appendingPathComponent(".wx-cli/config.json")
+        guard let data = try? Data(contentsOf: config),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let dbDir = object["db_dir"] as? String, !dbDir.isEmpty else { return nil }
+        return URL(fileURLWithPath: dbDir).deletingLastPathComponent()
+    }
+
+    public static func monthKey(_ timestamp: Double, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: Date(timeIntervalSince1970: timestamp))
+    }
+
+    /// Prefer `msg/file/<message-month>/<name>`; else same name in nearby months by mtime.
+    public static func resolve(
+        content: String, timestamp: Double,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        timeZone: TimeZone = .current,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        guard let name = parseFilename(from: content),
+              let root = accountRoot(home: home) else { return nil }
+        let filesRoot = root.appendingPathComponent("msg/file", isDirectory: true)
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: filesRoot.path, isDirectory: &isDir), isDir.boolValue else { return nil }
+        let preferred = filesRoot.appendingPathComponent(monthKey(timestamp, timeZone: timeZone), isDirectory: true)
+            .appendingPathComponent(name)
+        if fileManager.isReadableFile(atPath: preferred.path) { return preferred }
+
+        let months = (try? fileManager.contentsOfDirectory(at: filesRoot,
+            includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
+        var candidates: [(url: URL, distance: TimeInterval)] = []
+        for month in months {
+            var dir: ObjCBool = false
+            guard fileManager.fileExists(atPath: month.path, isDirectory: &dir), dir.boolValue else { continue }
+            let candidate = month.appendingPathComponent(name)
+            guard fileManager.isReadableFile(atPath: candidate.path) else { continue }
+            let mtime = (try? fileManager.attributesOfItem(atPath: candidate.path)[.modificationDate] as? Date)?
+                .timeIntervalSince1970 ?? timestamp
+            candidates.append((candidate, abs(mtime - timestamp)))
+        }
+        return candidates.min(by: { $0.distance < $1.distance })?.url
+    }
+}
+
+/// AI / 语料友好的结构化导出（MemoTrace JSON 思路；Mac · wx · 不碰解密）。
+public enum WeChatCorpusExport {
+    public static let schema = "digup-wechat-export/1"
+
+    public static func messageRecord(
+        index: Int, timestamp: Double, datetime: String,
+        sender: String, senderRaw: String, type: String,
+        kind: WeChatExportFormatting.Kind, plain: String,
+        content: String, imagePath: String?
+    ) -> [String: Any] {
+        var row: [String: Any] = [
+            "id": index,
+            "timestamp": timestamp,
+            "datetime": datetime,
+            "sender": sender,
+            "sender_raw": senderRaw,
+            "type": type,
+            "kind": kind.rawValue,
+            "text": plain,
+            "content": content
+        ]
+        if let imagePath { row["image"] = imagePath }
+        return row
+    }
+
+    /// One JSON object per line for fine-tune / RAG pipelines.
+    public static func jsonlLine(from record: [String: Any], sessionName: String) throws -> Data {
+        var line: [String: Any] = [
+            "session": sessionName,
+            "role": "message",
+            "name": record["sender"] as? String ?? "",
+            "content": record["text"] as? String ?? "",
+            "kind": record["kind"] as? String ?? "other",
+            "timestamp": record["timestamp"] as? Double ?? 0,
+            "datetime": record["datetime"] as? String ?? ""
+        ]
+        if let image = record["image"] as? String { line["image"] = image }
+        if let file = record["file"] as? String { line["file"] = file }
+        var data = try JSONSerialization.data(withJSONObject: line, options: [.sortedKeys])
+        data.append(contentsOf: "\n".utf8)
+        return data
+    }
+
+    public static func document(
+        session: WeChatSession, since: String?, until: String?,
+        exportedAt: String, messages: [[String: Any]], stats: WeChatConversationStats
+    ) -> [String: Any] {
+        var statsJSON: [String: Any] = [
+            "message_count": stats.messageCount,
+            "active_days": stats.activeDays,
+            "images_saved": stats.imagesSaved,
+            "images_unavailable": stats.imagesUnavailable,
+            "by_kind": stats.byKind,
+            "top_senders": stats.topSenders.map { ["name": $0.name, "count": $0.count] as [String: Any] }
+        ]
+        if let first = stats.firstTimestamp { statsJSON["first_timestamp"] = first }
+        if let last = stats.lastTimestamp { statsJSON["last_timestamp"] = last }
+        return [
+            "schema": schema,
+            "platform": "macOS",
+            "source": "wx",
+            "exported_at": exportedAt,
+            "session": [
+                "id": session.id,
+                "name": session.name,
+                "kind": session.kind.rawValue
+            ] as [String: Any],
+            "range": [
+                "since": since as Any,
+                "until": until as Any
+            ] as [String: Any],
+            "stats": statsJSON,
+            "messages": messages
+        ]
+    }
+}
+
+/// Lightweight range overview (MemoTrace-style summary; Mac / wx history only).
+public struct WeChatConversationStats: Sendable, Equatable {
+    public struct Sender: Sendable, Equatable {
+        public let name: String
+        public let count: Int
+        public init(name: String, count: Int) { self.name = name; self.count = count }
+    }
+
+    public var messageCount: Int
+    public var activeDays: Int
+    public var firstTimestamp: Double?
+    public var lastTimestamp: Double?
+    public var byKind: [String: Int]
+    /// `yyyy-MM-dd` → count, sorted chronologically when rendered.
+    public var byDay: [String: Int]
+    public var topSenders: [Sender]
+    public var imagesSaved: Int
+    public var imagesUnavailable: Int
+
+    public static let empty = WeChatConversationStats(
+        messageCount: 0, activeDays: 0, firstTimestamp: nil, lastTimestamp: nil,
+        byKind: [:], byDay: [:], topSenders: [], imagesSaved: 0, imagesUnavailable: 0)
+
+    public init(messageCount: Int, activeDays: Int, firstTimestamp: Double?, lastTimestamp: Double?,
+                byKind: [String: Int], byDay: [String: Int] = [:], topSenders: [Sender],
+                imagesSaved: Int, imagesUnavailable: Int) {
+        self.messageCount = messageCount; self.activeDays = activeDays
+        self.firstTimestamp = firstTimestamp; self.lastTimestamp = lastTimestamp
+        self.byKind = byKind; self.byDay = byDay; self.topSenders = topSenders
+        self.imagesSaved = imagesSaved; self.imagesUnavailable = imagesUnavailable
+    }
+}
+
+public struct WeChatStatsBuilder: Sendable {
+    private var byKind: [String: Int] = [:]
+    private var byDay: [String: Int] = [:]
+    private var senders: [String: Int] = [:]
+    private var days = Set<String>()
+    private var first: Double?
+    private var last: Double?
+    private var imagesSaved = 0
+    private var imagesUnavailable = 0
+    private let dayKey: DateFormatter
+
+    public init(timeZone: TimeZone = .current) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        dayKey = formatter
+    }
+
+    public mutating func add(timestamp: Double, senderLabel: String, kind: WeChatExportFormatting.Kind) {
+        guard timestamp.isFinite else { return }
+        byKind[kind.rawValue, default: 0] += 1
+        if kind != .system {
+            let name = senderLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { senders[name, default: 0] += 1 }
+        }
+        let day = dayKey.string(from: Date(timeIntervalSince1970: timestamp))
+        days.insert(day)
+        byDay[day, default: 0] += 1
+        if first == nil || timestamp < first! { first = timestamp }
+        if last == nil || timestamp > last! { last = timestamp }
+    }
+
+    public mutating func noteImages(saved: Int, unavailable: Int) {
+        imagesSaved = saved; imagesUnavailable = unavailable
+    }
+
+    public func finish(top: Int = 10) -> WeChatConversationStats {
+        let ranked = senders.map { WeChatConversationStats.Sender(name: $0.key, count: $0.value) }
+            .sorted { $0.count == $1.count ? $0.name < $1.name : $0.count > $1.count }
+        return WeChatConversationStats(
+            messageCount: byKind.values.reduce(0, +),
+            activeDays: days.count,
+            firstTimestamp: first,
+            lastTimestamp: last,
+            byKind: byKind,
+            byDay: byDay,
+            topSenders: Array(ranked.prefix(max(0, top))),
+            imagesSaved: imagesSaved,
+            imagesUnavailable: imagesUnavailable)
+    }
+
+    public static func from(messages: [WeChatMessage], timeZone: TimeZone = .current,
+                            displayName: (String) -> String = { $0 }) -> WeChatConversationStats {
+        var builder = WeChatStatsBuilder(timeZone: timeZone)
+        for message in messages {
+            let kind = WeChatExportFormatting.parts(type: message.type, content: message.content).kind
+            builder.add(timestamp: message.timestamp, senderLabel: displayName(message.sender), kind: kind)
+        }
+        return builder.finish()
+    }
+
+    public static func htmlDocument(stats: WeChatConversationStats, title: String,
+                                    timeZone: TimeZone = .current) -> String {
+        let escape = WeChatExportFormatting.escape
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX"); stamp.timeZone = timeZone
+        stamp.dateFormat = "yyyy-MM-dd HH:mm"
+        func when(_ value: Double?) -> String {
+            guard let value else { return "—" }
+            return stamp.string(from: Date(timeIntervalSince1970: value))
+        }
+        let kindOrder = ["text", "image", "video", "voice", "sticker", "quote", "link", "file", "applet", "system", "other"]
+        let kindLabels: [String: String] = [
+            "text": "文本 / Text", "image": "图片 / Image", "video": "视频 / Video", "voice": "语音 / Voice",
+            "sticker": "表情 / Sticker", "quote": "引用 / Quote", "link": "链接 / Link", "file": "文件 / File",
+            "applet": "小程序 / Mini Program", "system": "系统 / System", "other": "其他 / Other"
+        ]
+        let maxKind = max(1, stats.byKind.values.max() ?? 1)
+        var kindsHTML = ""
+        var kindBars = ""
+        for key in kindOrder where (stats.byKind[key] ?? 0) > 0 {
+            let count = stats.byKind[key]!
+            let pct = Int((Double(count) / Double(maxKind) * 100).rounded())
+            kindsHTML += "<tr><td>\(escape(kindLabels[key] ?? key))</td><td>\(count)</td></tr>"
+            kindBars += "<div class=\"bar-row\"><span>\(escape(kindLabels[key] ?? key))</span>"
+                + "<div class=\"bar\"><i style=\"width:\(pct)%\"></i></div><b>\(count)</b></div>"
+        }
+        var sendersHTML = ""
+        let maxSender = max(1, stats.topSenders.map(\.count).max() ?? 1)
+        var senderBars = ""
+        for (index, sender) in stats.topSenders.enumerated() {
+            sendersHTML += "<tr><td>\(index + 1)</td><td>\(escape(sender.name))</td><td>\(sender.count)</td></tr>"
+            let pct = Int((Double(sender.count) / Double(maxSender) * 100).rounded())
+            senderBars += "<div class=\"bar-row\"><span>\(escape(sender.name))</span>"
+                + "<div class=\"bar\"><i style=\"width:\(pct)%\"></i></div><b>\(sender.count)</b></div>"
+        }
+        if sendersHTML.isEmpty { sendersHTML = "<tr><td colspan=\"3\">—</td></tr>" }
+        if kindsHTML.isEmpty { kindsHTML = "<tr><td colspan=\"2\">—</td></tr>" }
+        let dayMax = max(1, stats.byDay.values.max() ?? 1)
+        var daysHTML = ""
+        for day in stats.byDay.keys.sorted() {
+            let count = stats.byDay[day] ?? 0
+            let pct = Int((Double(count) / Double(dayMax) * 100).rounded())
+            daysHTML += "<tr><td><a href=\"index.html#day-\(day)\">\(escape(day))</a></td><td>\(count)</td>"
+                + "<td><div class=\"bar mini\"><i style=\"width:\(pct)%\"></i></div></td></tr>"
+        }
+        if daysHTML.isEmpty { daysHTML = "<tr><td colspan=\"3\">—</td></tr>" }
+        return """
+        <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">\
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">\
+        <title>\(escape(title)) · overview</title><style>\
+        body{max-width:820px;margin:32px auto;padding:16px;font:16px/1.45 system-ui,-apple-system,sans-serif;color:#111}\
+        h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:28px 0 10px}nav a{color:#06c}\
+        .cards{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0}\
+        .card{flex:1 1 120px;padding:14px 16px;background:#f6f6f6;border-radius:10px}\
+        .card b{display:block;font-size:22px;margin-top:4px}\
+        .card span{color:#666;font-size:13px}\
+        table{width:100%;border-collapse:collapse;margin:12px 0 24px}\
+        th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e6e6e6}\
+        th{color:#666;font-weight:600;font-size:13px}\
+        .bar-row{display:grid;grid-template-columns:minmax(72px,140px) 1fr 40px;gap:8px;align-items:center;margin:6px 0}\
+        .bar-row span{font-size:13px;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
+        .bar{height:10px;background:#eee;border-radius:999px;overflow:hidden}\
+        .bar.mini{height:8px;min-width:80px}\
+        .bar i{display:block;height:100%;background:linear-gradient(90deg,#5b9cff,#3a7bfd);border-radius:999px}\
+        .bar-row b{font-size:13px;text-align:right;color:#333}\
+        @media print{nav{display:none}.bar i{-webkit-print-color-adjust:exact;print-color-adjust:exact}}\
+        </style>\
+        <nav><a href="index.html">← 聊天记录 / Messages</a> · <a href="messages.json">messages.json</a> · <a href="corpus.jsonl">corpus.jsonl</a></nav>\
+        <h1>\(escape(title))</h1>\
+        <p style="color:#666">区间概览 / Range overview · \(escape(when(stats.firstTimestamp))) → \(escape(when(stats.lastTimestamp)))</p>\
+        <div class="cards">\
+        <div class="card"><span>消息 / Messages</span><b>\(stats.messageCount)</b></div>\
+        <div class="card"><span>活跃日 / Active days</span><b>\(stats.activeDays)</b></div>\
+        <div class="card"><span>图片已保存 / Images</span><b>\(stats.imagesSaved)</b></div>\
+        <div class="card"><span>图片不可用 / Unavailable</span><b>\(stats.imagesUnavailable)</b></div>\
+        </div>\
+        <h2>类型分布 / Types</h2>\(kindBars.isEmpty ? "<p>—</p>" : kindBars)\
+        <table><thead><tr><th>类型</th><th>条数</th></tr></thead><tbody>\(kindsHTML)</tbody></table>\
+        <h2>发言 Top / Top senders</h2>\(senderBars.isEmpty ? "<p>—</p>" : senderBars)\
+        <table><thead><tr><th>#</th><th>名称</th><th>条数</th></tr></thead><tbody>\(sendersHTML)</tbody></table>\
+        <h2>按日活跃 / Daily activity</h2>\
+        <table><thead><tr><th>日期</th><th>条数</th><th></th></tr></thead><tbody>\(daysHTML)</tbody></table>
+        """
+    }
+
+    public static func indexFooter(stats: WeChatConversationStats) -> String {
+        var footer = "<section class=\"overview\"><h2>区间概览</h2><ul>"
+        footer += "<li>消息 \(stats.messageCount) · 活跃日 \(stats.activeDays)</li>"
+        if let top = stats.topSenders.first {
+            footer += "<li>最高频：\(WeChatExportFormatting.escape(top.name))（\(top.count)）</li>"
+        }
+        footer += "<li><a href=\"stats.html\">查看完整概览 / Full overview</a></li></ul></section>"
+        return footer
+    }
+}
+
+/// Stronger HTML chat report (day TOC, bubbles, sticky nav) — no JS; CSP-safe.
+public enum WeChatHTMLReport {
+    public static let style = """
+        :root{--bg:#f3f5f8;--card:#fff;--me:#d8ecff;--them:#fff;--line:#e6e8ec;--muted:#667085;--text:#101828}\
+        *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);\
+        font:15px/1.5 system-ui,-apple-system,sans-serif}\
+        .top{position:sticky;top:0;z-index:5;backdrop-filter:saturate(1.2) blur(8px);\
+        background:rgba(243,245,248,.92);border-bottom:1px solid var(--line);padding:10px 16px}\
+        .top h1{font-size:17px;margin:0 0 4px}.top .nav{font-size:13px;color:var(--muted)}\
+        .top a{color:#175cd3;text-decoration:none;margin-right:10px}\
+        .wrap{max-width:860px;margin:0 auto;padding:16px}\
+        details.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:16px}\
+        details.toc summary{cursor:pointer;font-weight:600}\
+        details.toc .days{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}\
+        details.toc a{font-size:13px;color:#175cd3;background:#eff4ff;padding:4px 8px;border-radius:999px;text-decoration:none}\
+        .day{margin:22px 0 8px;text-align:center}\
+        .day span{display:inline-block;background:#e8edf5;color:var(--muted);font-size:12px;padding:4px 10px;border-radius:999px}\
+        article{display:flex;flex-direction:column;margin:10px 0;max-width:78%}\
+        article.me{margin-left:auto;align-items:flex-end}article.them{margin-right:auto;align-items:flex-start}\
+        article.system{max-width:100%;align-items:center;margin:14px auto}\
+        article header{font-size:12px;color:var(--muted);margin-bottom:4px}\
+        .bubble{background:var(--them);border:1px solid var(--line);border-radius:14px;padding:10px 12px;\
+        box-shadow:0 1px 0 rgba(16,24,40,.04);overflow-wrap:anywhere;white-space:pre-wrap}\
+        article.me .bubble{background:var(--me);border-color:#b6d8f8}\
+        article.system .bubble{background:transparent;border:0;box-shadow:none;color:var(--muted);font-size:13px;text-align:center;padding:0}\
+        .quote{margin:0;border-left:3px solid #c5d0e0;padding:8px 10px;background:#f8fafc;border-radius:0 8px 8px 0}\
+        .quote .quoted{color:#475467;font-size:13px;margin-bottom:6px}.quote .reply{color:var(--text)}\
+        .media,.file,.applet,.link,.other{color:#344054}\
+        img{max-width:100%;max-height:480px;margin-top:8px;border-radius:8px;display:block}\
+        a{color:#175cd3;overflow-wrap:anywhere}\
+        .overview{margin-top:28px;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;font-size:14px}\
+        .overview ul{padding-left:18px}\
+        @media print{.top{position:static;background:#fff}details.toc{display:none}\
+        article{max-width:100%;break-inside:avoid}.bubble{box-shadow:none}}
+        """
+
+    public static func dayKey(_ timestamp: Double, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date(timeIntervalSince1970: timestamp))
+    }
+
+    public static func isSelf(senderRaw: String, selfUsername: String?,
+                              selfAliases: Set<String> = []) -> Bool {
+        let raw = senderRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return false }
+        if let selfUsername, !selfUsername.isEmpty, raw == selfUsername { return true }
+        return selfAliases.contains(raw)
+    }
 }
 
 /// Pure helpers for export folder naming and half-open day bounds (testable without AppKit).
@@ -66,6 +466,157 @@ public enum WeChatExportPlan {
         formatter.dateFormat = "yyyy-MM-dd"
         guard let untilDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)) else { return nil }
         return (formatter.string(from: start), formatter.string(from: untilDay))
+    }
+}
+
+/// Rich-ish plain/HTML bodies for wx history rows (Mac / capability-first; inspired by MemoTrace coverage, not its decrypt path).
+public enum WeChatExportFormatting {
+    public enum Kind: String, Sendable, Equatable {
+        case text, image, video, voice, sticker, quote, link, file, applet, system, other
+    }
+
+    public struct Parts: Sendable, Equatable {
+        public let kind: Kind
+        public let plain: String
+        /// Safe HTML fragment: escaped text plus `a` / `blockquote` / `br` / `span` only.
+        public let html: String
+        public init(kind: Kind, plain: String, html: String) {
+            self.kind = kind; self.plain = plain; self.html = html
+        }
+    }
+
+    public static func escape(_ text: String) -> String {
+        var out = String()
+        out.reserveCapacity(text.utf8.count + 8)
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "&": out += "&amp;"
+            case "<": out += "&lt;"
+            case ">": out += "&gt;"
+            case "\"": out += "&quot;"
+            default: out.unicodeScalars.append(scalar)
+            }
+        }
+        return out
+    }
+
+    /// Autolink http(s) URLs inside already-plain text; returns escaped HTML with `<a>`.
+    public static func linkifiedHTML(_ text: String) -> String {
+        let pattern = #"https?://[^\s<>"')\]]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return escape(text) }
+        let ns = text as NSString
+        var result = ""
+        var cursor = 0
+        let full = NSRange(location: 0, length: ns.length)
+        for match in regex.matches(in: text, range: full) {
+            let before = NSRange(location: cursor, length: match.range.location - cursor)
+            if before.length > 0 { result += escape(ns.substring(with: before)) }
+            var url = ns.substring(with: match.range)
+            var trailing = ""
+            while let last = url.last, ",.;:!?）)".contains(last) {
+                trailing = String(last) + trailing
+                url.removeLast()
+            }
+            if url.isEmpty {
+                result += escape(ns.substring(with: match.range))
+            } else {
+                result += "<a href=\"\(escape(url))\">\(escape(url))</a>" + escape(trailing)
+            }
+            cursor = match.range.location + match.range.length
+        }
+        if cursor < ns.length { result += escape(ns.substring(from: cursor)) }
+        return result.isEmpty ? escape(text) : result
+    }
+
+    public static func parts(type: String, content: String) -> Parts {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch key {
+        case "text", "文本", "1":
+            return Parts(kind: .text, plain: trimmed, html: "<p>\(linkifiedHTML(trimmed))</p>")
+        case "image", "图片", "3":
+            return Parts(kind: .image, plain: "[图片 / Image]", html: "<p class=\"media\">[图片 / Image]</p>")
+        case "video", "视频", "43":
+            return Parts(kind: .video, plain: "[视频 / Video]", html: "<p class=\"media\">[视频 / Video]</p>")
+        case "voice", "语音", "34":
+            return Parts(kind: .voice, plain: "[语音 / Voice]", html: "<p class=\"media\">[语音 / Voice]</p>")
+        case "sticker", "表情", "表情包", "47":
+            return Parts(kind: .sticker, plain: "[表情 / Sticker]", html: "<p class=\"media\">[表情 / Sticker]</p>")
+        case "call", "通话", "voip", "50":
+            let detail = trimmed.replacingOccurrences(of: "[通话]", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let plain = detail.isEmpty ? "[通话 / Call]" : "[通话 / Call] \(detail)"
+            return Parts(kind: .other, plain: plain, html: "<p class=\"other\">\(escape(plain))</p>")
+        case "系统", "system", "10000", "10002":
+            return systemParts(trimmed)
+        case "链接/文件", "share", "app", "49":
+            return shareParts(trimmed)
+        default:
+            if trimmed.hasPrefix("[引用]") { return quoteParts(trimmed) }
+            if trimmed.hasPrefix("[文件]") { return fileParts(trimmed) }
+            if trimmed.hasPrefix("[小程序]") { return appletParts(trimmed) }
+            if trimmed.hasPrefix("[链接]") { return linkParts(trimmed) }
+            if trimmed.hasPrefix("[系统]") { return systemParts(trimmed) }
+            let plain = trimmed.isEmpty ? "[附件或其他消息 / Attachment or other message]" : trimmed
+            return Parts(kind: .other, plain: plain, html: "<p class=\"other\">\(linkifiedHTML(plain))</p>")
+        }
+    }
+
+    private static func quoteParts(_ content: String) -> Parts {
+        let body = String(content.drop(while: { $0 != "]" }).dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+        // wx shape: "[引用] quoted…\n  ↳ Sender: reply"
+        let marker = "\n  ↳ "
+        if let range = body.range(of: marker) {
+            let quoted = String(body[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let reply = String(body[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let plain = "[引用 / Quote]\n\(quoted)\n↳ \(reply)"
+            let html = "<blockquote class=\"quote\"><div class=\"quoted\">\(linkifiedHTML(quoted))</div>"
+                + "<div class=\"reply\">\(linkifiedHTML(reply))</div></blockquote>"
+            return Parts(kind: .quote, plain: plain, html: html)
+        }
+        let plain = "[引用 / Quote] \(body)"
+        return Parts(kind: .quote, plain: plain,
+                     html: "<blockquote class=\"quote\">\(linkifiedHTML(body))</blockquote>")
+    }
+
+    private static func fileParts(_ content: String) -> Parts {
+        let detail = content.replacingOccurrences(of: "[文件]", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let plain = "[文件 / File] \(detail)"
+        return Parts(kind: .file, plain: plain, html: "<p class=\"file\">\(escape(plain))</p>")
+    }
+
+    private static func appletParts(_ content: String) -> Parts {
+        let detail = content.replacingOccurrences(of: "[小程序]", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let plain = "[小程序 / Mini Program] \(detail)"
+        return Parts(kind: .applet, plain: plain, html: "<p class=\"applet\">\(escape(plain))</p>")
+    }
+
+    private static func linkParts(_ content: String) -> Parts {
+        let detail = content.replacingOccurrences(of: "[链接]", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let plain = "[链接 / Link] \(detail)"
+        return Parts(kind: .link, plain: plain, html: "<p class=\"link\">\(linkifiedHTML(plain))</p>")
+    }
+
+    private static func shareParts(_ content: String) -> Parts {
+        if content.hasPrefix("[引用]") { return quoteParts(content) }
+        if content.hasPrefix("[文件]") { return fileParts(content) }
+        if content.hasPrefix("[小程序]") { return appletParts(content) }
+        if content.hasPrefix("[链接]") { return linkParts(content) }
+        let plain = content.isEmpty ? "[链接或文件 / Link or file]" : content
+        return Parts(kind: .link, plain: plain, html: "<p class=\"link\">\(linkifiedHTML(plain))</p>")
+    }
+
+    private static func systemParts(_ content: String) -> Parts {
+        // Drop embedded XML/sysmsg noise; keep a one-line human hint when possible.
+        var line = content
+        if let range = line.range(of: "<") { line = String(line[..<range.lowerBound]) }
+        line = line
+            .replacingOccurrences(of: "[系统]", with: "")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if line.hasSuffix(":") { line = String(line.dropLast()).trimmingCharacters(in: .whitespaces) }
+        let plain = line.isEmpty ? "[系统消息 / System]" : "[系统 / System] \(line)"
+        return Parts(kind: .system, plain: plain, html: "<p class=\"system\">\(escape(plain))</p>")
     }
 }
 
@@ -172,17 +723,38 @@ public struct WeChatReader: Sendable {
         return (rows, object["meta"] as? [String: Any] ?? [:])
     }
 
+    /// WeChat inserts synthetic rows (brand/service holders, fold placeholders) that `wx history` cannot open.
+    public static func isSyntheticSessionID(_ id: String) -> Bool {
+        let key = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if key.isEmpty || key.hasPrefix("@placeholder") { return true }
+        if key.contains("sessionholder") { return true }
+        if key == "notifymessage" || key == "floatbottle" || key == "medianote" { return true }
+        return false
+    }
+
     public func sessions() throws -> [WeChatSession] {
         let (rows, _) = try Self.rows(run(["sessions", "--limit", "200", "--json", "--with-meta"]), key: "sessions")
         var seen = Set<String>()
         let sessions: [WeChatSession] = try rows.compactMap { row in
             guard let id = row["username"] as? String, !id.isEmpty, !id.hasPrefix("-"),
                   seen.insert(id).inserted else { throw WeChatReadError.invalidResponse }
-            let name = row["chat"] as? String ?? row["display_name"] as? String ?? row["name"] as? String ?? row["display"] as? String ?? id
-            // Folded inboxes aggregate other conversations; they are not readable chat identities.
+            // Folded inboxes / synthetic holders are not readable chat identities.
             if row["chat_type"] as? String == "folded" { return nil }
+            if Self.isSyntheticSessionID(id) { return nil }
+            var name = row["chat"] as? String ?? row["display_name"] as? String ?? row["name"] as? String ?? row["display"] as? String ?? id
+            name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Nameless group: keep readable via username, but avoid showing raw id as the only title.
+            if name.isEmpty || name == id {
+                if id.hasSuffix("@chatroom") {
+                    let summary = (row["summary"] as? String)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    name = summary.isEmpty ? "未命名群聊" : String(summary.prefix(28))
+                } else if id.hasSuffix("@openim") {
+                    name = name.isEmpty || name == id ? "企业微信联系人" : name
+                }
+            }
             let stamp = row["timestamp"] as? NSNumber
-            let session = WeChatSession(id: id, name: name, chatType: row["chat_type"] as? String,
+            let session = WeChatSession(id: id, name: name.isEmpty ? id : name, chatType: row["chat_type"] as? String,
                                         lastMessageTimestamp: stamp.flatMap { CFGetTypeID($0) == CFBooleanGetTypeID() ? nil : $0.doubleValue })
             return session.kind == .official ? nil : session
         }
@@ -281,7 +853,9 @@ public struct WeChatReader: Sendable {
     public func exportConversation(session: WeChatSession, to destination: URL, since: String? = nil,
                            until: String? = nil, timeZone: TimeZone = .current,
                            progress: (@Sendable (Int, Int) -> Void)? = nil,
-                           displayName: (@Sendable (String) -> String)? = nil) throws -> WeChatExportResult {
+                           displayName: (@Sendable (String) -> String)? = nil,
+                           selfUsername: String? = nil,
+                           selfAliases: Set<String> = []) throws -> WeChatExportResult {
         let start = since.flatMap { Self.date($0, timeZone: timeZone) }
         let end = until.flatMap { Self.date($0, timeZone: timeZone) }
         guard !session.id.isEmpty, !session.id.hasPrefix("-"),
@@ -293,45 +867,35 @@ public struct WeChatReader: Sendable {
         defer { try? FileManager.default.removeItem(at: temporary) }
         let media = temporary.appendingPathComponent("images")
         try FileManager.default.createDirectory(at: media, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        let filesDir = temporary.appendingPathComponent("files")
+        try FileManager.default.createDirectory(at: filesDir, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         func file(_ name: String) throws -> FileHandle {
             let url = temporary.appendingPathComponent(name)
             guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw WeChatReadError.commandFailed }
             return try FileHandle(forWritingTo: url)
         }
-        let output = try file("messages.txt"), html = try file("index.html")
-        defer { try? output.close(); try? html.close() }
-        // Single-pass escape; reserve capacity to cut reallocations on long chats.
-        func escape(_ text: String) -> String {
-            var out = String()
-            out.reserveCapacity(text.utf8.count + 8)
-            for scalar in text.unicodeScalars {
-                switch scalar {
-                case "&": out += "&amp;"
-                case "<": out += "&lt;"
-                case ">": out += "&gt;"
-                case "\"": out += "&quot;"
-                default: out.unicodeScalars.append(scalar)
-                }
-            }
-            return out
-        }
+        let output = try file("messages.txt"), jsonl = try file("corpus.jsonl")
+        defer { try? output.close(); try? jsonl.close() }
+        let escape = WeChatExportFormatting.escape
         let flushBytes = 64 * 1024
         var textBuf = Data(); textBuf.reserveCapacity(flushBytes)
-        var htmlBuf = Data(); htmlBuf.reserveCapacity(flushBytes)
+        var jsonlBuf = Data(); jsonlBuf.reserveCapacity(flushBytes)
+        var htmlBody = Data(); htmlBody.reserveCapacity(256 * 1024)
         func appendText(_ text: String) { textBuf.append(contentsOf: text.utf8) }
-        func appendHTML(_ text: String) { htmlBuf.append(contentsOf: text.utf8) }
+        func appendBody(_ text: String) { htmlBody.append(contentsOf: text.utf8) }
+        func appendJSONL(_ data: Data) { jsonlBuf.append(data) }
         func flushBuffers(force: Bool = false) throws {
             if force || textBuf.count >= flushBytes {
                 try output.write(contentsOf: textBuf); textBuf.removeAll(keepingCapacity: true)
             }
-            if force || htmlBuf.count >= flushBytes {
-                try html.write(contentsOf: htmlBuf); htmlBuf.removeAll(keepingCapacity: true)
+            if force || jsonlBuf.count >= flushBytes {
+                try jsonl.write(contentsOf: jsonlBuf); jsonlBuf.removeAll(keepingCapacity: true)
             }
         }
-        appendHTML("<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'\"><title>WeChat</title><style>body{max-width:900px;margin:32px auto;padding:16px;font:16px system-ui}article{border-bottom:1px solid #ddd;padding:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}img{max-width:100%;max-height:600px}header{color:#666}</style><h1>" + escape(session.name) + "</h1>")
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+        let exportedAt = formatter.string(from: Date())
         func page(_ offset: Int) throws -> [[String: Any]] {
             var args = ["history", session.id, "--limit", "200", "--offset", String(offset), "--with-meta", "--json"]
             if let since { args += ["--since", since] }
@@ -343,6 +907,10 @@ public struct WeChatReader: Sendable {
         }
         appendText(session.name + "\n\n")
         var offset = 0, count = 0, imageCount = 0, unavailable = 0, seen = Set<String>()
+        var statsBuilder = WeChatStatsBuilder(timeZone: timeZone)
+        var corpusRecords: [[String: Any]] = []
+        var dayOrder: [String] = []
+        var lastDay: String?
         var first: Data?
         while true {
             try Task<Never, Never>.checkCancellation()
@@ -361,11 +929,10 @@ public struct WeChatReader: Sendable {
                 let senderRaw = row["sender"] as? String ?? ""
                 let sender = displayName?(senderRaw) ?? senderRaw
                 let when = formatter.string(from: Date(timeIntervalSince1970: timestamp))
-                let body: String
+                var rendered = WeChatExportFormatting.parts(type: type, content: content)
                 var imagePath: String?
-                switch type.lowercased() {
-                case "text", "文本", "1": body = content
-                case "image", "图片", "3":
+                var filePath: String?
+                if rendered.kind == .image {
                     do {
                         let raw = try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys])
                         let message = WeChatMessage(id: "\(id)@\(timestamp)", sender: senderRaw, timestamp: timestamp, content: content, type: type, raw: raw)
@@ -373,7 +940,9 @@ public struct WeChatReader: Sendable {
                         try Task<Never, Never>.checkCancellation()
                         let path = try Self.writeExportImage(data, index: count + 1, into: temporary)
                         imagePath = path; imageCount += 1
-                        body = "[图片 / Image: \(path)]"
+                        rendered = WeChatExportFormatting.Parts(
+                            kind: .image, plain: "[图片 / Image: \(path)]",
+                            html: "<p class=\"media\">[图片 / Image]</p>")
                     } catch is CancellationError { throw CancellationError() }
                     catch {
                         try Task<Never, Never>.checkCancellation()
@@ -381,18 +950,69 @@ public struct WeChatReader: Sendable {
                             let failed = temporary.appendingPathComponent("images/message-\(count + 1).\(ext)")
                             if FileManager.default.fileExists(atPath: failed.path) { try FileManager.default.removeItem(at: failed) }
                         }
-                        unavailable += 1; body = "[图片不可用 / Image unavailable]"
+                        unavailable += 1
+                        rendered = WeChatExportFormatting.Parts(
+                            kind: .image, plain: "[图片不可用 / Image unavailable]",
+                            html: "<p class=\"media\">[图片不可用 / Image unavailable]</p>")
                     }
-                case "video", "视频", "43": body = "[视频 / Video]"
-                case "sticker", "表情", "表情包", "47": body = "[表情 / Sticker]"
-                case "voice", "语音", "34": body = "[语音 / Voice]"
-                default: body = "[附件或其他消息 / Attachment or other message]"
+                } else if rendered.kind == .file {
+                    if let local = WeChatFileLocator.resolve(content: content, timestamp: timestamp, timeZone: timeZone),
+                       let name = WeChatFileLocator.parseFilename(from: content) {
+                        let destName = "message-\(count + 1)-\(name)"
+                        let dest = filesDir.appendingPathComponent(destName)
+                        do {
+                            if FileManager.default.fileExists(atPath: dest.path) {
+                                try FileManager.default.removeItem(at: dest)
+                            }
+                            try FileManager.default.copyItem(at: local, to: dest)
+                            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: dest.path)
+                            filePath = "files/\(destName)"
+                            rendered = WeChatExportFormatting.Parts(
+                                kind: .file,
+                                plain: "[文件 / File] \(name) → \(filePath!)",
+                                html: "<p class=\"file\"><a href=\"\(escape(filePath!))\">\(escape(name))</a></p>")
+                        } catch {
+                            rendered = WeChatExportFormatting.Parts(
+                                kind: .file,
+                                plain: "[文件 / File] \(name)（本机有缓存但复制失败 / copy failed）",
+                                html: "<p class=\"file\">\(escape(name))</p>")
+                        }
+                    } else if let name = WeChatFileLocator.parseFilename(from: content) {
+                        rendered = WeChatExportFormatting.Parts(
+                            kind: .file,
+                            plain: "[文件 / File] \(name)（本机未找到已下载文件 / not downloaded locally）",
+                            html: "<p class=\"file\">\(escape(name)) · 未找到本地文件</p>")
+                    }
                 }
-                appendText("\(when)  \(sender)\n\(body)\n\n")
-                let heading = "\(when)  \(sender)"
-                appendHTML("<article id=\"message-\(count + 1)\"><header>" + escape(heading) + "</header><pre>" + escape(body) + "</pre>")
-                if let imagePath { appendHTML("<a href=\"\(imagePath)\"><img loading=\"lazy\" src=\"\(imagePath)\" alt=\"图片 / Image\"></a>") }
-                appendHTML("</article>\n")
+                statsBuilder.add(timestamp: timestamp, senderLabel: sender, kind: rendered.kind)
+                let heading = rendered.kind == .system ? when : "\(when)  \(sender)"
+                appendText("\(heading)\n\(rendered.plain)\n\n")
+                let day = WeChatHTMLReport.dayKey(timestamp, timeZone: timeZone)
+                if day != lastDay {
+                    lastDay = day
+                    dayOrder.append(day)
+                    appendBody("<div class=\"day\" id=\"day-\(day)\"><span>\(escape(day))</span></div>\n")
+                }
+                let role: String
+                if rendered.kind == .system { role = "system" }
+                else if WeChatHTMLReport.isSelf(senderRaw: senderRaw, selfUsername: selfUsername,
+                                               selfAliases: selfAliases) { role = "me" }
+                else { role = "them" }
+                appendBody("<article id=\"message-\(count + 1)\" class=\"\(role)\"><header>" + escape(heading) + "</header>")
+                appendBody("<div class=\"bubble\">")
+                appendBody(rendered.html)
+                if let imagePath {
+                    appendBody("<a href=\"\(imagePath)\"><img loading=\"lazy\" src=\"\(imagePath)\" alt=\"图片 / Image\"></a>")
+                }
+                appendBody("</div></article>\n")
+                var record = WeChatCorpusExport.messageRecord(
+                    index: count + 1, timestamp: timestamp, datetime: when,
+                    sender: sender, senderRaw: senderRaw, type: type,
+                    kind: rendered.kind, plain: rendered.plain,
+                    content: content, imagePath: imagePath)
+                if let filePath { record["file"] = filePath }
+                corpusRecords.append(record)
+                appendJSONL(try WeChatCorpusExport.jsonlLine(from: record, sessionName: session.name))
                 count += 1
             }
             try flushBuffers()
@@ -405,13 +1025,57 @@ public struct WeChatReader: Sendable {
             throw WeChatReadError.changedSource
         }
         try Task<Never, Never>.checkCancellation()
+        statsBuilder.noteImages(saved: imageCount, unavailable: unavailable)
+        let stats = statsBuilder.finish()
+        appendBody(WeChatStatsBuilder.indexFooter(stats: stats))
+        appendText("\n---\n区间概览：\(stats.messageCount) 条消息，\(stats.activeDays) 个活跃日\n")
+        if let top = stats.topSenders.first {
+            appendText("最高频发言：\(top.name)（\(top.count)）\n")
+        }
+        appendText("结构化语料：messages.json · corpus.jsonl\n")
         try flushBuffers(force: true)
         try output.synchronize()
         try output.close()
-        try html.synchronize(); try html.close()
+        try jsonl.synchronize(); try jsonl.close()
+
+        var tocLinks = ""
+        for day in dayOrder {
+            tocLinks += "<a href=\"#day-\(day)\">\(escape(day))</a>"
+        }
+        let toc = dayOrder.isEmpty ? "" : """
+        <details class="toc" open><summary>按日跳转 / Jump by day（\(dayOrder.count)）</summary>\
+        <div class="days">\(tocLinks)</div></details>
+        """
+        var indexHTML = Data()
+        indexHTML.append(contentsOf: """
+        <!doctype html><html lang="zh-Hans"><meta charset="utf-8"><meta name="viewport" content="width=device-width">\
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline';">\
+        <title>\(escape(session.name))</title><style>\(WeChatHTMLReport.style)</style>\
+        <div class="top"><h1>\(escape(session.name))</h1>\
+        <div class="nav"><a href="stats.html">区间概览</a><a href="messages.json">messages.json</a>\
+        <a href="corpus.jsonl">corpus.jsonl</a><span>\(stats.messageCount) 条 · \(stats.activeDays) 天</span></div></div>\
+        <div class="wrap">\(toc)
+        """.utf8)
+        indexHTML.append(htmlBody)
+        indexHTML.append(contentsOf: "</div>".utf8)
+        let indexURL = temporary.appendingPathComponent("index.html")
+        try indexHTML.write(to: indexURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: indexURL.path)
+
+        let statsURL = temporary.appendingPathComponent("stats.html")
+        try WeChatStatsBuilder.htmlDocument(stats: stats, title: session.name, timeZone: timeZone)
+            .write(to: statsURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: statsURL.path)
+        let messagesJSON = temporary.appendingPathComponent("messages.json")
+        let document = WeChatCorpusExport.document(
+            session: session, since: since, until: until,
+            exportedAt: exportedAt, messages: corpusRecords, stats: stats)
+        let jsonData = try JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted, .sortedKeys])
+        try jsonData.write(to: messagesJSON, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: messagesJSON.path)
         // A new directory only: never overwrite an existing export or user folder.
         try FileManager.default.moveItem(at: temporary, to: destination)
-        return WeChatExportResult(messages: count, images: imageCount, unavailableImages: unavailable)
+        return WeChatExportResult(messages: count, images: imageCount, unavailableImages: unavailable, stats: stats)
     }
 
     /// Prefer original JPEG/PNG bytes; fall back to PNG re-encode only when the container is unfamiliar.
@@ -452,13 +1116,25 @@ public struct WeChatReader: Sendable {
         return date
     }
 
+    /// Pages needed so a ~1 month window rarely hits the soft cap (wx page ≤ 200).
+    public static func historyPageBudget(since: Date, until: Date, pageSize: Int = 200) -> (pageSize: Int, maxPages: Int) {
+        let size = min(200, max(1, pageSize))
+        let days = max(1, Calendar.current.dateComponents([.day], from: since, to: until).day ?? 1)
+        // ~1 month → allow up to ~6000 rows; short ranges stay small and fast.
+        let pages = min(30, max(5, (days * 40 + size - 1) / size))
+        return (size, pages)
+    }
+
     /// Read a bounded, half-open local date range. No persistent cursor: every request is explicit.
     public func history(session: WeChatSession, since: String, until: String, timeZone: TimeZone = .current,
-                        pageSize: Int = 100, maxPages: Int = 5) throws -> WeChatReadResult {
+                        pageSize: Int = 200, maxPages: Int? = nil) throws -> WeChatReadResult {
         guard let start = Self.date(since, timeZone: timeZone), let end = Self.date(until, timeZone: timeZone),
               end > start,
-              (1...200).contains(pageSize), (1...10).contains(maxPages),
               !session.id.isEmpty, !session.id.hasPrefix("-") else { throw WeChatReadError.invalidRange }
+        let budget = Self.historyPageBudget(since: start, until: end, pageSize: pageSize)
+        let pageSize = budget.pageSize
+        let maxPages = min(30, max(1, maxPages ?? budget.maxPages))
+        guard (1...200).contains(pageSize), (1...30).contains(maxPages) else { throw WeChatReadError.invalidRange }
         func page(_ offset: Int) throws -> ([[String: Any]], [String: Any]) {
             try Self.rows(run(["history", session.id, "--since", since, "--until", until,
                                "--limit", String(pageSize), "--offset", String(offset), "--with-meta", "--json"]), key: "messages", expectedUsername: session.id)

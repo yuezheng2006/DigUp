@@ -35,6 +35,60 @@ import Testing
         #expect(name == "WeChat-2026-10-26-abcdef12")
     }
 
+    @Test func statsBuilderCountsDaysTypesAndTopSenders() {
+        var builder = WeChatStatsBuilder(timeZone: zone)
+        let day1 = WeChatReader.date("2026-10-20", timeZone: zone)!.timeIntervalSince1970 + 3600
+        let day2 = WeChatReader.date("2026-10-21", timeZone: zone)!.timeIntervalSince1970 + 7200
+        builder.add(timestamp: day1, senderLabel: "甲", kind: .text)
+        builder.add(timestamp: day1 + 10, senderLabel: "甲", kind: .image)
+        builder.add(timestamp: day2, senderLabel: "乙", kind: .text)
+        builder.add(timestamp: day2 + 1, senderLabel: "", kind: .system)
+        builder.noteImages(saved: 1, unavailable: 0)
+        let stats = builder.finish(top: 5)
+        #expect(stats.messageCount == 4)
+        #expect(stats.activeDays == 2)
+        #expect(stats.byKind["text"] == 2 && stats.byKind["image"] == 1 && stats.byKind["system"] == 1)
+        #expect(stats.byDay["2026-10-20"] == 2 && stats.byDay["2026-10-21"] == 2)
+        #expect(stats.topSenders.map(\.name) == ["甲", "乙"])
+        #expect(stats.topSenders[0].count == 2)
+        let html = WeChatStatsBuilder.htmlDocument(stats: stats, title: "验收群聊", timeZone: zone)
+        #expect(html.contains("Active days") || html.contains("活跃日"))
+        #expect(html.contains("甲") && html.contains("发言"))
+        #expect(html.contains("Daily activity") || html.contains("按日活跃"))
+        #expect(html.contains("index.html#day-2026-10-20"))
+        #expect(html.contains("class=\"bar\""))
+    }
+
+    @Test func formattingMapsWxShareTypesAndQuotes() {
+        let quote = WeChatExportFormatting.parts(
+            type: "链接/文件",
+            content: "[引用] 原话内容\n  ↳ Jacky: 回复正文")
+        #expect(quote.kind == .quote)
+        #expect(quote.plain.contains("原话内容") && quote.plain.contains("Jacky"))
+        #expect(quote.html.contains("<blockquote") && quote.html.contains("reply"))
+
+        let file = WeChatExportFormatting.parts(type: "链接/文件", content: "[文件] 说明.docx (1.2 MB, docx)")
+        #expect(file.kind == .file && file.plain.contains("说明.docx"))
+
+        let link = WeChatExportFormatting.parts(type: "链接/文件", content: "[链接] 当前版本不支持展示该内容")
+        #expect(link.kind == .link)
+
+        let applet = WeChatExportFormatting.parts(type: "链接/文件", content: "[小程序] 快递信息")
+        #expect(applet.kind == .applet)
+
+        let system = WeChatExportFormatting.parts(
+            type: "系统",
+            content: "[系统] room@chatroom:\n<sysmsg type=\"sysmsgtemplate\">noise</sysmsg>")
+        #expect(system.kind == .system)
+        #expect(!system.plain.contains("<sysmsg"))
+        #expect(system.html.contains("class=\"system\""))
+
+        let text = WeChatExportFormatting.parts(type: "文本", content: "见 https://example.com/a 谢谢")
+        #expect(text.kind == .text)
+        #expect(text.html.contains("<a href=\"https://example.com/a\">"))
+        #expect(WeChatExportFormatting.escape("<&>") == "&lt;&amp;&gt;")
+    }
+
     @Test func dayBoundsAreHalfOpenAndRejectInvertedRange() {
         let start = WeChatReader.date("2026-10-20", timeZone: zone)!
         let end = WeChatReader.date("2026-10-26", timeZone: zone)!
@@ -81,9 +135,71 @@ import Testing
         #expect(text.contains("[语音 / Voice]"))
         let html = try String(contentsOf: dest.appendingPathComponent("index.html"), encoding: .utf8)
         #expect(html.contains("message-1") && html.contains("群聊测试：中文检索"))
+        #expect(html.contains("class=\"media\"") || html.contains("[语音"))
         #expect(throws: WeChatReadError.commandFailed) {
             try reader.exportConversation(session: session, to: dest, since: "2026-10-20", until: "2026-10-21", timeZone: zone)
         }
+    }
+
+    @Test func exportRendersQuotesAndSystemWithoutRawXml() throws {
+        let root = try tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stamp = WeChatReader.date("2026-10-20", timeZone: zone)!.timeIntervalSince1970 + 100
+        let page = try payload([
+            row(1, stamp, content: "[引用] 问一句\n  ↳ 模拟发送者: 答一句", type: "链接/文件"),
+            row(2, stamp + 1, content: "[系统] room:\n<sysmsg>x</sysmsg>", type: "系统", sender: ""),
+            row(3, stamp + 2, content: "看 https://example.org/x", type: "文本")
+        ])
+        let reader = WeChatReader { _ in page }
+        let dest = root.appendingPathComponent("rich")
+        let report = try reader.exportConversation(
+            session: session, to: dest, since: "2026-10-20", until: "2026-10-21", timeZone: zone)
+        #expect(report.messages == 3)
+        let text = try String(contentsOf: dest.appendingPathComponent("messages.txt"), encoding: .utf8)
+        #expect(text.contains("问一句") && text.contains("答一句"))
+        #expect(text.contains("[系统") && !text.contains("<sysmsg"))
+        let html = try String(contentsOf: dest.appendingPathComponent("index.html"), encoding: .utf8)
+        #expect(html.contains("<blockquote") && html.contains("class=\"quote\""))
+        #expect(html.contains("class=\"system\""))
+        #expect(html.contains("<a href=\"https://example.org/x\">"))
+        #expect(!html.contains("<sysmsg"))
+        #expect(html.contains("id=\"day-2026-10-20\""))
+        #expect(html.contains("按日跳转") || html.contains("Jump by day"))
+        #expect(html.contains("class=\"bubble\"") && html.contains("class=\"them\""))
+        #expect(html.contains("class=\"top\"") && html.contains("position:sticky"))
+        let statsHTML = try String(contentsOf: dest.appendingPathComponent("stats.html"), encoding: .utf8)
+        #expect(statsHTML.contains("区间概览") || statsHTML.contains("Range overview"))
+        #expect(FileManager.default.fileExists(atPath: dest.appendingPathComponent("stats.html").path))
+        #expect(html.contains("stats.html") && html.contains("class=\"overview\""))
+        #expect(html.contains("messages.json") && html.contains("corpus.jsonl"))
+        let messagesJSON = try Data(contentsOf: dest.appendingPathComponent("messages.json"))
+        let parsed = try JSONSerialization.jsonObject(with: messagesJSON) as? [String: Any]
+        #expect(parsed?["schema"] as? String == WeChatCorpusExport.schema)
+        let messages = parsed?["messages"] as? [[String: Any]]
+        #expect(messages?.count == 3)
+        #expect(messages?.contains { ($0["kind"] as? String) == "quote" } == true)
+        let jsonl = try String(contentsOf: dest.appendingPathComponent("corpus.jsonl"), encoding: .utf8)
+        let lines = jsonl.split(separator: "\n", omittingEmptySubsequences: true)
+        #expect(lines.count == 3)
+        #expect(lines[0].contains("\"role\":\"message\"") || lines[0].contains("\"role\" : \"message\""))
+    }
+
+    @Test func corpusHelpersStableShape() throws {
+        let record = WeChatCorpusExport.messageRecord(
+            index: 1, timestamp: 1_700_000_000, datetime: "2026-10-20 12:00:00 +0800",
+            sender: "甲", senderRaw: "wxid_a", type: "文本", kind: .text,
+            plain: "你好", content: "你好", imagePath: nil)
+        #expect(record["sender"] as? String == "甲")
+        #expect(record["kind"] as? String == "text")
+        let line = try WeChatCorpusExport.jsonlLine(from: record, sessionName: "测")
+        let obj = try JSONSerialization.jsonObject(with: line) as? [String: Any]
+        #expect(obj?["session"] as? String == "测")
+        #expect(obj?["content"] as? String == "你好")
+        let doc = WeChatCorpusExport.document(
+            session: session, since: "2026-10-20", until: "2026-10-21",
+            exportedAt: "now", messages: [record], stats: .empty)
+        #expect(doc["schema"] as? String == WeChatCorpusExport.schema)
+        #expect((doc["session"] as? [String: Any])?["id"] as? String == session.id)
     }
 
     @Test func exportFiltersHalfOpenBoundsAndLeavesNoPartialOnInvalidRange() throws {

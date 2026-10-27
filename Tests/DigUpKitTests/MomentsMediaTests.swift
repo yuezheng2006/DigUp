@@ -11,9 +11,12 @@ import Testing
         #expect(cipher.next() == 0x9d39247e33776d41)
         #expect(cipher.next() == 0x2af7398005aaa5c7)
         #expect(WeChatMedia.allowed(URL(string: "http://shmmsns.qpic.cn/sns/photo/150")!))
+        #expect(WeChatMedia.allowed(URL(string: "https://wx.qlogo.cn/mmhead/x")!))
+        #expect(WeChatMedia.allowed(URL(string: "https://mmhead.c2c.wechat.com/avatar")!))
         #expect(!WeChatMedia.allowed(URL(string: "https://qpic.cn.evil.test/photo")!))
         #expect(!WeChatMedia.allowed(URL(string: "file:///etc/passwd")!))
         #expect(!WeChatMedia.allowed(URL(string: "http://127.0.0.1/photo")!))
+        #expect(!WeChatMedia.allowed(URL(string: "https://evil.wechat.com.attacker.test/x")!))
         #expect(MomentsFilter.suspectedAdvertisement("限时优惠，扫码下单"))
         #expect(!MomentsFilter.suspectedAdvertisement("今天去公司附近看日落"))
     }
