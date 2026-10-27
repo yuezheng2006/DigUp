@@ -52,8 +52,20 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
   || /usr/libexec/PlistBuddy -c "Add :DUAppGroupIdentifier string $APP_GROUP" "$APP/Contents/Info.plist"
 
 # Share extension must enter at NSExtensionMain (Package.swift linker -e). Fail closed if dropped.
-if ! nm -u "$BIN_DIR/DigUpShare" | grep -Fq '_NSExtensionMain'; then
+# Retry briefly: a just-linked binary can briefly miss the undefined-symbol listing under load.
+SHARE_OK=0
+for _try in 1 2 3 4 5; do
+  if [[ -x "$BIN_DIR/DigUpShare" ]] && nm -u "$BIN_DIR/DigUpShare" 2>/dev/null | grep -F '_NSExtensionMain' >/dev/null; then
+    SHARE_OK=1
+    break
+  fi
+  sleep 0.2
+done
+if [[ "$SHARE_OK" != 1 ]]; then
   echo "DigUpShare is not linked against _NSExtensionMain; check Package.swift linker flags" >&2
+  echo "BIN_DIR=$BIN_DIR" >&2
+  ls -la "$BIN_DIR/DigUpShare" 2>&1 >&2 || true
+  nm -u "$BIN_DIR/DigUpShare" 2>&1 | head -40 >&2 || true
   exit 1
 fi
 
