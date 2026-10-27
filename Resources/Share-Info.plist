@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.6.2</string>
+	<string>0.7.0-plus.1</string>
 	<key>CFBundleVersion</key>
-	<string>13</string>
+	<string>14</string>
 	<key>DUAppGroupIdentifier</key>
 	<string>3396ALL92C.group.com.yuezheng.digupplus.shared</string>
 	<key>DUShareAction</key>
