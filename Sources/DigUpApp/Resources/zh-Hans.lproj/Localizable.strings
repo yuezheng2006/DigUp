@@ -497,11 +497,15 @@
 
 "Other conversations" = "其他会话";
 
+"Export" = "导出";
+
 "Export…" = "导出…";
 
 "Export conversation" = "导出会话";
 
 "Export range" = "导出范围";
+
+"Save export to" = "导出保存到";
 
 "All messages" = "全部消息";
 
@@ -512,6 +516,8 @@
 "Local messages as text; media included as labels." = "导出本机记录为文本，媒体以标记保留。";
 
 "Exporting…" = "正在导出…";
+
+"Exporting {0} messages · {1} images…" = "正在导出 {0} 条消息 · {1} 张图片…";
 
 "Exported {0} messages" = "已导出 {0} 条消息";
 

@@ -42,6 +42,33 @@ public struct WeChatExportResult: Sendable {
     public let unavailableImages: Int
 }
 
+/// Pure helpers for export folder naming and half-open day bounds (testable without AppKit).
+public enum WeChatExportPlan {
+    public static func folderName(now: Date = Date(), id: String = UUID().uuidString,
+                                  timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "WeChat-" + formatter.string(from: now) + "-" + String(id.prefix(8))
+    }
+
+    /// `until` is exclusive (day after the selected end date). `nil` pair means the whole local history.
+    public static func dayBounds(all: Bool, start: Date, end: Date, timeZone: TimeZone = .current,
+                                 calendar: Calendar = .current) -> (since: String?, until: String?)? {
+        if all { return (nil, nil) }
+        var calendar = calendar
+        calendar.timeZone = timeZone
+        guard calendar.startOfDay(for: start) <= calendar.startOfDay(for: end) else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let untilDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)) else { return nil }
+        return (formatter.string(from: start), formatter.string(from: untilDay))
+    }
+}
+
 public enum WeChatDatePreset: String, CaseIterable, Sendable {
     case week = "Last week", twoWeeks = "Last two weeks", month = "Last month", halfYear = "Last six months"
     public func start(through date: Date, calendar: Calendar = .current) -> Date {
@@ -167,6 +194,30 @@ public struct WeChatReader: Sendable {
         }
     }
 
+    /// Group/private roster for resolving history `sender` to WeChat-visible names.
+    public func members(session: WeChatSession) throws -> [WeChatMember] {
+        guard !session.id.isEmpty, !session.id.hasPrefix("-") else { throw WeChatReadError.invalidRange }
+        let data = try run(["members", session.id, "--json"])
+        guard data.count <= 8 * 1024 * 1024,
+              let value = try? JSONSerialization.jsonObject(with: data) else { throw WeChatReadError.invalidResponse }
+        let rows: [[String: Any]]
+        if let list = value as? [[String: Any]] { rows = list }
+        else if let object = value as? [String: Any], object["error"] == nil,
+                let list = object["members"] as? [[String: Any]] { rows = list }
+        else { throw WeChatReadError.invalidResponse }
+        guard rows.count <= 2000 else { throw WeChatReadError.invalidResponse }
+        var seen = Set<String>()
+        return try rows.map { row in
+            guard let username = row["username"] as? String, !username.isEmpty, !username.hasPrefix("-"),
+                  seen.insert(username).inserted else { throw WeChatReadError.invalidResponse }
+            return WeChatMember(
+                username: username,
+                contactDisplay: row["contact_display"] as? String ?? "",
+                display: row["display"] as? String ?? "",
+                groupNickname: row["group_nickname"] as? String ?? "")
+        }
+    }
+
     /// Fetch only the selected message's image, matching both timestamp and local identity.
     public func image(message: WeChatMessage, session: WeChatSession) throws -> Data {
         let raw = try JSONSerialization.jsonObject(with: message.raw) as? [String: Any]
@@ -225,8 +276,12 @@ public struct WeChatReader: Sendable {
 
     /// Streams local messages and linked images to a private staging directory, publishing only on success.
     /// Dates are half-open; nil bounds mean all local history, independent of the reading-page cap.
+    /// Writes are buffered; JPEG/PNG payloads are stored as-is (no decode→PNG round-trip).
+    /// `progress` is invoked after each page with `(messages, images)` written so far.
     public func exportConversation(session: WeChatSession, to destination: URL, since: String? = nil,
-                           until: String? = nil, timeZone: TimeZone = .current) throws -> WeChatExportResult {
+                           until: String? = nil, timeZone: TimeZone = .current,
+                           progress: (@Sendable (Int, Int) -> Void)? = nil,
+                           displayName: (@Sendable (String) -> String)? = nil) throws -> WeChatExportResult {
         let start = since.flatMap { Self.date($0, timeZone: timeZone) }
         let end = until.flatMap { Self.date($0, timeZone: timeZone) }
         guard !session.id.isEmpty, !session.id.hasPrefix("-"),
@@ -245,16 +300,38 @@ public struct WeChatReader: Sendable {
         }
         let output = try file("messages.txt"), html = try file("index.html")
         defer { try? output.close(); try? html.close() }
+        // Single-pass escape; reserve capacity to cut reallocations on long chats.
         func escape(_ text: String) -> String {
-            text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
-                .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+            var out = String()
+            out.reserveCapacity(text.utf8.count + 8)
+            for scalar in text.unicodeScalars {
+                switch scalar {
+                case "&": out += "&amp;"
+                case "<": out += "&lt;"
+                case ">": out += "&gt;"
+                case "\"": out += "&quot;"
+                default: out.unicodeScalars.append(scalar)
+                }
+            }
+            return out
         }
-        func writeHTML(_ text: String) throws { try html.write(contentsOf: Data(text.utf8)) }
-        try writeHTML("<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'\"><title>WeChat</title><style>body{max-width:900px;margin:32px auto;padding:16px;font:16px system-ui}article{border-bottom:1px solid #ddd;padding:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}img{max-width:100%;max-height:600px}header{color:#666}</style><h1>" + escape(session.name) + "</h1>")
+        let flushBytes = 64 * 1024
+        var textBuf = Data(); textBuf.reserveCapacity(flushBytes)
+        var htmlBuf = Data(); htmlBuf.reserveCapacity(flushBytes)
+        func appendText(_ text: String) { textBuf.append(contentsOf: text.utf8) }
+        func appendHTML(_ text: String) { htmlBuf.append(contentsOf: text.utf8) }
+        func flushBuffers(force: Bool = false) throws {
+            if force || textBuf.count >= flushBytes {
+                try output.write(contentsOf: textBuf); textBuf.removeAll(keepingCapacity: true)
+            }
+            if force || htmlBuf.count >= flushBytes {
+                try html.write(contentsOf: htmlBuf); htmlBuf.removeAll(keepingCapacity: true)
+            }
+        }
+        appendHTML("<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'\"><title>WeChat</title><style>body{max-width:900px;margin:32px auto;padding:16px;font:16px system-ui}article{border-bottom:1px solid #ddd;padding:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}img{max-width:100%;max-height:600px}header{color:#666}</style><h1>" + escape(session.name) + "</h1>")
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
-        func write(_ text: String) throws { try output.write(contentsOf: Data(text.utf8)) }
         func page(_ offset: Int) throws -> [[String: Any]] {
             var args = ["history", session.id, "--limit", "200", "--offset", String(offset), "--with-meta", "--json"]
             if let since { args += ["--since", since] }
@@ -264,7 +341,7 @@ public struct WeChatReader: Sendable {
             if let missing = meta["unknown_shards"] as? [Any], !missing.isEmpty { throw WeChatReadError.invalidResponse }
             return items
         }
-        try write(session.name + "\n\n")
+        appendText(session.name + "\n\n")
         var offset = 0, count = 0, imageCount = 0, unavailable = 0, seen = Set<String>()
         var first: Data?
         while true {
@@ -281,6 +358,9 @@ public struct WeChatReader: Sendable {
                 if let start, timestamp < start.timeIntervalSince1970 { continue }
                 if let end, timestamp >= end.timeIntervalSince1970 { continue }
                 let type = row["type"] as? String ?? "unknown"
+                let senderRaw = row["sender"] as? String ?? ""
+                let sender = displayName?(senderRaw) ?? senderRaw
+                let when = formatter.string(from: Date(timeIntervalSince1970: timestamp))
                 let body: String
                 var imagePath: String?
                 switch type.lowercased() {
@@ -288,24 +368,19 @@ public struct WeChatReader: Sendable {
                 case "image", "图片", "3":
                     do {
                         let raw = try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys])
-                        let message = WeChatMessage(id: "\(id)@\(timestamp)", sender: row["sender"] as? String ?? "", timestamp: timestamp, content: content, type: type, raw: raw)
+                        let message = WeChatMessage(id: "\(id)@\(timestamp)", sender: senderRaw, timestamp: timestamp, content: content, type: type, raw: raw)
                         let data = try image(message: message, session: session)
                         try Task<Never, Never>.checkCancellation()
-                        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                              let decoded = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw WeChatReadError.invalidResponse }
-                        let path = "images/message-\(count + 1).png"
-                        let url = temporary.appendingPathComponent(path)
-                        guard let encoder = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { throw WeChatReadError.commandFailed }
-                        CGImageDestinationAddImage(encoder, decoded, nil)
-                        guard CGImageDestinationFinalize(encoder) else { throw WeChatReadError.commandFailed }
-                        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                        let path = try Self.writeExportImage(data, index: count + 1, into: temporary)
                         imagePath = path; imageCount += 1
                         body = "[图片 / Image: \(path)]"
                     } catch is CancellationError { throw CancellationError() }
                     catch {
                         try Task<Never, Never>.checkCancellation()
-                        let failedImage = temporary.appendingPathComponent("images/message-\(count + 1).png")
-                        if FileManager.default.fileExists(atPath: failedImage.path) { try FileManager.default.removeItem(at: failedImage) }
+                        for ext in ["png", "jpg", "jpeg"] {
+                            let failed = temporary.appendingPathComponent("images/message-\(count + 1).\(ext)")
+                            if FileManager.default.fileExists(atPath: failed.path) { try FileManager.default.removeItem(at: failed) }
+                        }
                         unavailable += 1; body = "[图片不可用 / Image unavailable]"
                     }
                 case "video", "视频", "43": body = "[视频 / Video]"
@@ -313,13 +388,15 @@ public struct WeChatReader: Sendable {
                 case "voice", "语音", "34": body = "[语音 / Voice]"
                 default: body = "[附件或其他消息 / Attachment or other message]"
                 }
-                try write("\(formatter.string(from: Date(timeIntervalSince1970: timestamp)))  \(row["sender"] as? String ?? "")\n\(body)\n\n")
-                let heading = formatter.string(from: Date(timeIntervalSince1970: timestamp)) + "  " + (row["sender"] as? String ?? "")
-                try writeHTML("<article id=\"message-\(count + 1)\"><header>" + escape(heading) + "</header><pre>" + escape(body) + "</pre>")
-                if let imagePath { try writeHTML("<a href=\"\(imagePath)\"><img loading=\"lazy\" src=\"\(imagePath)\" alt=\"图片 / Image\"></a>") }
-                try writeHTML("</article>\n")
+                appendText("\(when)  \(sender)\n\(body)\n\n")
+                let heading = "\(when)  \(sender)"
+                appendHTML("<article id=\"message-\(count + 1)\"><header>" + escape(heading) + "</header><pre>" + escape(body) + "</pre>")
+                if let imagePath { appendHTML("<a href=\"\(imagePath)\"><img loading=\"lazy\" src=\"\(imagePath)\" alt=\"图片 / Image\"></a>") }
+                appendHTML("</article>\n")
                 count += 1
             }
+            try flushBuffers()
+            progress?(count, imageCount)
             if items.count < 200 { break }
             offset += items.count
         }
@@ -328,12 +405,41 @@ public struct WeChatReader: Sendable {
             throw WeChatReadError.changedSource
         }
         try Task<Never, Never>.checkCancellation()
+        try flushBuffers(force: true)
         try output.synchronize()
         try output.close()
         try html.synchronize(); try html.close()
         // A new directory only: never overwrite an existing export or user folder.
         try FileManager.default.moveItem(at: temporary, to: destination)
         return WeChatExportResult(messages: count, images: imageCount, unavailableImages: unavailable)
+    }
+
+    /// Prefer original JPEG/PNG bytes; fall back to PNG re-encode only when the container is unfamiliar.
+    static func writeExportImage(_ data: Data, index: Int, into temporary: URL) throws -> String {
+        let images = temporary.appendingPathComponent("images")
+        try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        let pngMagic = Data([0x89, 0x50, 0x4E, 0x47])
+        let jpegMagic = Data([0xFF, 0xD8, 0xFF])
+        func store(_ name: String, _ bytes: Data) throws -> String {
+            let path = "images/\(name)"
+            let url = temporary.appendingPathComponent(path)
+            try bytes.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            return path
+        }
+        if data.starts(with: pngMagic) { return try store("message-\(index).png", data) }
+        if data.starts(with: jpegMagic) { return try store("message-\(index).jpg", data) }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let decoded = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw WeChatReadError.invalidResponse }
+        let path = "images/message-\(index).png"
+        let url = temporary.appendingPathComponent(path)
+        guard let encoder = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+            throw WeChatReadError.commandFailed
+        }
+        CGImageDestinationAddImage(encoder, decoded, nil)
+        guard CGImageDestinationFinalize(encoder) else { throw WeChatReadError.commandFailed }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        return path
     }
 
     public static func date(_ value: String, timeZone: TimeZone) -> Date? {

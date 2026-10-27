@@ -25,42 +25,74 @@ final class WeChatState {
     var exportAll = true
     var exportStart = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
     var exportEnd = Date()
+    var exportFolder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
     var exporting = false
     var exportStatus = ""
     private var exportTask: Task<WeChatExportResult, Error>?
+    /// Contact remarks / nicknames; used so history shows WeChat-visible names, not bare wxids.
+    var profiles = WeChatProfiles()
+    var names = WeChatNameDirectory()
 
     func cancelExport() { exportTask?.cancel() }
 
+    /// One sheet (HIG / TablePro-style): pick the folder inside the sheet with a non-blocking
+    /// AppKit panel (`begin` / `beginSheetModal`), never `runModal()` while the SwiftUI sheet is up.
+    @MainActor
+    func chooseExportFolder() async {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = exportFolder
+        panel.prompt = L("Export here")
+        let response: NSApplication.ModalResponse
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            response = await panel.beginSheetModalAsync(for: window)
+        } else {
+            response = await panel.beginModalAsync()
+        }
+        if response == .OK, let url = panel.url { exportFolder = url }
+    }
+
+    /// Closes the options sheet, then writes under `exportFolder` (folder already chosen in-sheet).
     func exportMessages() {
         guard !exporting, let session = sessions.first(where: { $0.id == selection }) else { return }
-        let calendar = Calendar.current
-        guard exportAll || calendar.startOfDay(for: exportStart) <= calendar.startOfDay(for: exportEnd) else { return }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = .current
-        formatter.dateFormat = "yyyy-MM-dd"
-        let start = exportAll ? nil : formatter.string(from: exportStart)
-        let end = exportAll ? nil : calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: exportEnd)).map { formatter.string(from: $0) }
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false; panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
-        panel.prompt = L("Export here")
-        guard panel.runModal() == .OK, let parent = panel.url else { return }
-        let url = parent.appendingPathComponent("WeChat-" + formatter.string(from: Date()) + "-" + String(UUID().uuidString.prefix(8)))
-        exportPresented = false; exporting = true; exportStatus = ""
-        let reader = WeChatReader(executable: executable), zone = TimeZone.current
-        let work = Task.detached { try reader.exportConversation(session: session, to: url, since: start, until: end, timeZone: zone) }
+        guard let bounds = WeChatExportPlan.dayBounds(all: exportAll, start: exportStart, end: exportEnd) else { return }
+        let url = exportFolder.appendingPathComponent(WeChatExportPlan.folderName())
+        let readerPath = executable
+        let zone = TimeZone.current
+        exportPresented = false
+        exporting = true
+        exportStatus = L("Exporting…")
+        let directory = names
+        let work = Task.detached { [weak self] in
+            try WeChatReader(executable: readerPath).exportConversation(
+                session: session, to: url, since: bounds.since, until: bounds.until, timeZone: zone,
+                progress: { messages, images in
+                    Task { @MainActor in
+                        guard let self, self.exporting else { return }
+                        self.exportStatus = L("Exporting {0} messages · {1} images…", messages, images)
+                    }
+                },
+                displayName: { directory.displayName(for: $0) })
+        }
         exportTask = work
-        Task {
+        Task { @MainActor in
             do {
                 let report = try await work.value
-                exportStatus = L("Exported {0} messages · {1} images · {2} unavailable", report.messages, report.images, report.unavailableImages)
+                self.exportStatus = L(
+                    "Exported {0} messages · {1} images · {2} unavailable",
+                    report.messages, report.images, report.unavailableImages)
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             } catch is CancellationError {
-                exportStatus = L("Export cancelled")
+                self.exportStatus = L("Export cancelled")
             } catch {
-                exportStatus = L("Export failed. No partial file was saved.") + " " + message(error)
+                self.exportStatus = L("Export failed. No partial file was saved.") + " " + self.message(error)
             }
-            exporting = false; exportTask = nil
+            self.exporting = false
+            self.exportTask = nil
         }
     }
 
@@ -187,6 +219,12 @@ final class WeChatState {
     func detectReader() {
         reset()
         executable = WeChatReaderLocation.detect() ?? ""
+        if !executable.isEmpty {
+            Task.detached { [weak self] in
+                let loaded = WeChatProfiles.load()
+                await MainActor.run { self?.profiles = loaded }
+            }
+        }
     }
 
     func open() {
@@ -206,6 +244,25 @@ final class WeChatState {
         cancelWork = nil
         generation = UUID()
         sessions = []; selection = ""; result = nil; error = nil; query = ""
+        names = WeChatNameDirectory()
+    }
+
+    /// WeChat-visible label: 备注 → 昵称 → alias；未解析的 wxid_ 显示为「微信联系人」。
+    func displayName(for message: WeChatMessage) -> String {
+        let label = names.displayName(for: message.sender)
+        if label.hasPrefix("wxid_") { return L("WeChat contact") }
+        return label.isEmpty ? L("WeChat contact") : label
+    }
+
+    /// Session list / header: contact or group `small_head_url` from wx contact DB.
+    func avatarURL(for session: WeChatSession) -> URL? {
+        profiles.people[session.id]?.avatar
+    }
+
+    /// Message row: resolve sender (wxid / nick / alias) → profile avatar.
+    func avatarURL(for message: WeChatMessage) -> URL? {
+        names.avatarURL(for: message.sender, in: profiles)
+            ?? profiles.people[message.sender]?.avatar
     }
 
     private func message(_ error: Error) -> String {
@@ -244,21 +301,32 @@ final class WeChatState {
         generation = UUID()
         clearSearch()
         clearMedia()
-        result = nil; error = nil; busy = true
+        result = nil; error = nil; busy = true; names = WeChatNameDirectory()
         let reader = WeChatReader(executable: executable), token = generation
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy-MM-dd"
         let start = formatter.string(from: since), end = formatter.string(from: until), zone = TimeZone.current
+        let knownProfiles = profiles
         let work = Task.detached {
-            try reader.history(session: session, since: start, until: end, timeZone: zone)
+            async let history = reader.history(session: session, since: start, until: end, timeZone: zone)
+            let roster: [WeChatMember]
+            do { roster = try reader.members(session: session) } catch { roster = [] }
+            let loadedProfiles = knownProfiles.people.isEmpty ? WeChatProfiles.load() : knownProfiles
+            let directory = WeChatNameDirectory.build(members: roster, profiles: loadedProfiles)
+            return (try await history, directory, loadedProfiles)
         }
         cancelWork = { work.cancel() }
         Task {
             do {
-                let found = try await work.value
-                if token == generation { result = found; indexMessages(found.messages, session: session) }
+                let (found, directory, loadedProfiles) = try await work.value
+                if token == generation {
+                    if profiles.people.isEmpty { profiles = loadedProfiles }
+                    names = directory
+                    result = found
+                    indexMessages(found.messages, session: session)
+                }
             } catch {
                 if token == generation { self.error = message(error) }
             }
@@ -273,7 +341,11 @@ final class WeChatState {
             let byID = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
             return rankedIDs.compactMap { byID[$0] }
         }
-        return messages.filter { $0.content.localizedCaseInsensitiveContains(query) || $0.sender.localizedCaseInsensitiveContains(query) }
+        return messages.filter {
+            $0.content.localizedCaseInsensitiveContains(query)
+                || $0.sender.localizedCaseInsensitiveContains(query)
+                || displayName(for: $0).localizedCaseInsensitiveContains(query)
+        }
     }
 }
 
@@ -300,9 +372,13 @@ struct WeChatChatsView: View {
                                 guard state.selection != session.id else { return }
                                 state.selection = session.id; state.query = ""; state.read()
                             } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: session.kind == .group ? "person.2.fill" : session.kind == .person ? "person.fill" : "bubble.left")
-                                        .frame(width: 20).foregroundStyle(session.kind == .group ? Color.accentColor : Color.secondary)
+                                HStack(spacing: 10) {
+                                    WeChatAvatarView(
+                                        url: state.avatarURL(for: session),
+                                        group: session.kind == .group,
+                                        fallback: session.kind == .group ? "person.2.fill"
+                                            : session.kind == .person ? "person.fill" : "bubble.left",
+                                        size: 36)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(session.name == session.id ? L("Unnamed conversation") : session.name)
                                             .lineLimit(2).multilineTextAlignment(.leading)
@@ -333,7 +409,15 @@ struct WeChatChatsView: View {
                     .foregroundStyle(.secondary)
                 Button(L("Detect Again")) { state.open() }
             }
-            HStack {
+            HStack(spacing: 10) {
+                if let session = state.sessions.first(where: { $0.id == state.selection }) {
+                    WeChatAvatarView(
+                        url: state.avatarURL(for: session),
+                        group: session.kind == .group,
+                        fallback: session.kind == .group ? "person.2.fill"
+                            : session.kind == .person ? "person.fill" : "bubble.left",
+                        size: 28)
+                }
                 Text(state.sessions.first(where: { $0.id == state.selection }).map { $0.name == $0.id ? L("Unnamed conversation") : $0.name } ?? L("Choose a conversation"))
                     .font(.headline).lineLimit(1)
                 Spacer()
@@ -378,25 +462,32 @@ struct WeChatChatsView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(state.visibleMessages) { item in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("\(item.sender.hasPrefix("wxid_") ? L("WeChat contact") : item.sender) · \(Date(timeIntervalSince1970: item.timestamp).formatted())")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                if ["text", "文本", "1"].contains(item.type.lowercased()) {
-                                    Text(verbatim: item.content).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                                } else if ["image", "图片", "3"].contains(item.type.lowercased()) {
-                                    if let image = state.images[item.id] {
-                                        Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 220)
-                                    } else if state.imageErrors.contains(item.id) {
-                                        Text(L("Image unavailable. It may not be downloaded or its decoder is missing.")).foregroundStyle(.secondary)
-                                    } else if state.loadingImage == item.id {
-                                        ProgressView().controlSize(.small)
+                            HStack(alignment: .top, spacing: 10) {
+                                WeChatAvatarView(
+                                    url: state.avatarURL(for: item),
+                                    group: false,
+                                    fallback: "person.fill",
+                                    size: 32)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("\(state.displayName(for: item)) · \(Date(timeIntervalSince1970: item.timestamp).formatted())")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    if ["text", "文本", "1"].contains(item.type.lowercased()) {
+                                        Text(verbatim: item.content).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                                    } else if ["image", "图片", "3"].contains(item.type.lowercased()) {
+                                        if let image = state.images[item.id] {
+                                            Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 220)
+                                        } else if state.imageErrors.contains(item.id) {
+                                            Text(L("Image unavailable. It may not be downloaded or its decoder is missing.")).foregroundStyle(.secondary)
+                                        } else if state.loadingImage == item.id {
+                                            ProgressView().controlSize(.small)
+                                        } else {
+                                            Button(L("View Image")) { state.loadImage(item) }.disabled(state.loadingImage != nil)
+                                        }
                                     } else {
-                                        Button(L("View Image")) { state.loadImage(item) }.disabled(state.loadingImage != nil)
+                                        Text(L("Media or attachment preview is not available yet.")).foregroundStyle(.secondary)
                                     }
-                                } else {
-                                    Text(L("Media or attachment preview is not available yet.")).foregroundStyle(.secondary)
+                                    Divider()
                                 }
-                                Divider()
                             }
                         }
                     }.padding(4)
@@ -410,36 +501,118 @@ struct WeChatChatsView: View {
             }.padding(16).frame(maxWidth: .infinity, maxHeight: .infinity)
         }.frame(minWidth: 760, minHeight: 400)
         .sheet(isPresented: $state.exportPresented) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(L("Export conversation")).font(.headline)
-                Picker(L("Export range"), selection: $state.exportAll) {
-                    Text(L("All messages")).tag(true)
-                    Text(L("Date range")).tag(false)
-                }.pickerStyle(.segmented)
-                HStack(spacing: 6) {
-                    ForEach(WeChatDatePreset.allCases, id: \.self) { preset in
-                        Button(L(preset.rawValue)) {
-                            state.exportAll = false; state.exportPreset = preset
-                            let now = Date()
-                            state.exportStart = preset.start(through: now); state.exportEnd = now
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(!state.exportAll && state.exportPreset == preset ? Color.accentColor : Color.secondary)
+            WeChatExportSheet(state: state)
+        }
+    }
+}
+
+/// One options sheet: range + destination + Export. Avoids sheet→`runModal` deadlock
+/// (osaurus / TablePro pattern: non-blocking panel, destination chosen before start).
+private struct WeChatExportSheet: View {
+    @Bindable var state: WeChatState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(L("Export conversation")).font(.headline)
+            Picker(L("Export range"), selection: $state.exportAll) {
+                Text(L("All messages")).tag(true)
+                Text(L("Date range")).tag(false)
+            }.pickerStyle(.segmented)
+            HStack(spacing: 6) {
+                ForEach(WeChatDatePreset.allCases, id: \.self) { preset in
+                    Button(L(preset.rawValue)) {
+                        state.exportAll = false; state.exportPreset = preset
+                        let now = Date()
+                        state.exportStart = preset.start(through: now); state.exportEnd = now
                     }
+                    .buttonStyle(.bordered)
+                    .tint(!state.exportAll && state.exportPreset == preset ? Color.accentColor : Color.secondary)
                 }
-                if !state.exportAll {
-                    DatePicker(L("From"), selection: Binding(get: { state.exportStart }, set: { state.exportPreset = nil; state.exportStart = $0 }), displayedComponents: .date)
-                    DatePicker(L("Through"), selection: Binding(get: { state.exportEnd }, set: { state.exportPreset = nil; state.exportEnd = $0 }), displayedComponents: .date)
+            }
+            if !state.exportAll {
+                DatePicker(L("From"), selection: Binding(get: { state.exportStart }, set: { state.exportPreset = nil; state.exportStart = $0 }), displayedComponents: .date)
+                DatePicker(L("Through"), selection: Binding(get: { state.exportEnd }, set: { state.exportPreset = nil; state.exportEnd = $0 }), displayedComponents: .date)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(L("Save export to")).foregroundStyle(.secondary)
+                Text(state.exportFolder.path)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .help(state.exportFolder.path)
+                Spacer(minLength: 8)
+                Button(L("Choose Folders…")) {
+                    Task { await state.chooseExportFolder() }
                 }
-                Text(L("A folder with text and linked images. Unavailable media are marked.")).font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Spacer()
-                    Button(L("Cancel")) { state.exportPresented = false }
-                    Button(L("Export…")) { state.exportMessages() }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(!state.exportAll && Calendar.current.startOfDay(for: state.exportStart) > Calendar.current.startOfDay(for: state.exportEnd))
-                }
-            }.padding(24).frame(width: 460)
+                .disabled(state.exporting)
+            }
+            Text(L("A folder with text and linked images. Unavailable media are marked.")).font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button(L("Cancel")) { dismiss() }
+                Button(L("Export")) { state.exportMessages() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(state.exporting || (!state.exportAll && Calendar.current.startOfDay(for: state.exportStart) > Calendar.current.startOfDay(for: state.exportEnd)))
+            }
+        }.padding(24).frame(width: 520)
+    }
+}
+
+extension NSSavePanel {
+    /// Non-blocking panel (osaurus): avoids nested `runModal` app-hang false positives and sheet freezes.
+    @MainActor
+    func beginModalAsync() async -> NSApplication.ModalResponse {
+        await withCheckedContinuation { continuation in
+            begin { continuation.resume(returning: $0) }
+        }
+    }
+
+    @MainActor
+    func beginSheetModalAsync(for window: NSWindow) async -> NSApplication.ModalResponse {
+        await withCheckedContinuation { continuation in
+            beginSheetModal(for: window) { continuation.resume(returning: $0) }
+        }
+    }
+}
+
+/// CDN avatar (qlogo / qpic) with SF Symbol fallback — session list, header, message rows.
+private struct WeChatAvatarView: View {
+    let url: URL?
+    var group = false
+    var fallback = "person.fill"
+    var size: CGFloat = 36
+    @State private var image: NSImage?
+    @State private var failed = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+                .fill(Color.secondary.opacity(0.12))
+            if let image {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else if failed || url == nil {
+                Image(systemName: fallback)
+                    .font(.system(size: size * 0.38, weight: .medium))
+                    .foregroundStyle(group ? Color.accentColor : Color.secondary)
+            } else {
+                ProgressView().controlSize(.mini)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        .task(id: url?.absoluteString) { await load() }
+    }
+
+    private func load() async {
+        guard let url else { image = nil; failed = false; return }
+        image = nil; failed = false
+        do {
+            let data = try await WeChatMedia.image(url: url)
+            try Task.checkCancellation()
+            image = NSImage(data: data); failed = image == nil
+        } catch {
+            if !Task.isCancelled { failed = true }
         }
     }
 }

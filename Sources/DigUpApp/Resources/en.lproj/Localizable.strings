@@ -497,11 +497,15 @@
 
 "Other conversations" = "Other conversations";
 
+"Export" = "Export";
+
 "Export…" = "Export…";
 
 "Export conversation" = "Export conversation";
 
 "Export range" = "Export range";
+
+"Save export to" = "Save export to";
 
 "All messages" = "All messages";
 
@@ -512,6 +516,8 @@
 "Local messages as text; media included as labels." = "Local messages as text; media included as labels.";
 
 "Exporting…" = "Exporting…";
+
+"Exporting {0} messages · {1} images…" = "Exporting {0} messages · {1} images…";
 
 "Exported {0} messages" = "Exported {0} messages";
 
