@@ -14,6 +14,7 @@ function field(view) {
   const elements = new Map([['query', query]]);
   let nextTimer = 0;
   const context = vm.createContext({
+    navigator: { languages: ['zh-CN'] },
     $query: query, $: (id) => {
       if (!elements.has(id)) elements.set(id, {});
       return elements.get(id);
@@ -32,6 +33,7 @@ function field(view) {
       return promise;
     },
   });
+  vm.runInContext(readFileSync(join(__dirname, '../ui/i18n.js'), 'utf8'), context);
   vm.runInContext(source.slice(source.indexOf('const state = {'), source.indexOf('// MARK: Searching')), context);
   const start = source.indexOf(view === 'panel' ? 'function queryChanged(' : 'function isCode(');
   const end = source.indexOf(view === 'panel' ? '\nfunction show(' : '\n/// Every result shown');
