@@ -685,3 +685,39 @@
 "Slate" = "Slate";
 
 "Choose light or dark, and an accent. Match System follows macOS. Moss, Amber and Slate are DigUp accents; System Accent uses the Mac control color." = "Choose light or dark, and an accent. Match System follows macOS. Moss, Amber and Slate are DigUp accents; System Accent uses the Mac control color.";
+
+/* WeChat Share (DigUp Plus) */
+"WeChat Share" = "WeChat Share";
+"WeChat Share Shelf" = "WeChat Share Shelf";
+"Collect multiple WeChat forwards (100+), then deliver once." = "Collect multiple WeChat forwards (100+), then deliver once.";
+"Shelf is empty — use「暂存到 DigUp Plus」in WeChat share menu." = "Shelf is empty — use “Save to DigUp Plus” in the WeChat share menu.";
+"Deliver to Claude" = "Deliver to Claude";
+"Deliver to Codex" = "Deliver to Codex";
+"Export Markdown / Obsidian" = "Export Markdown / Obsidian";
+"Clear" = "Clear";
+"Collection cleared" = "Collection cleared";
+"Collection is empty" = "Collection is empty";
+"Delivered to %@" = "Delivered to %@";
+"Copied to clipboard — paste into your app" = "Copied to clipboard — paste into your app";
+"Markdown exported" = "Markdown exported";
+"Choose Obsidian folder" = "Choose Obsidian folder";
+"WeChat 4.1.13+ → merge forward → Forward to other apps. DigUp Plus entries appear in that menu." = "WeChat 4.1.13+ → merge forward → Forward to other apps. DigUp Plus entries appear in that menu.";
+"Share menu entries" = "Share menu entries";
+"Not registered — rebuild/install DigUp.app first" = "Not registered — rebuild/install DigUp.app first";
+"Open System Settings…" = "Open System Settings…";
+"Shelf collects only (for 100+ batching)" = "Shelf collects only (for 100+ batching)";
+"Attach prompt when delivering to AI" = "Attach prompt when delivering to AI";
+"Collection" = "Collection";
+"Turn on shelf-collect, forward several WeChat batches to「暂存」, then open the shelf to deliver once or export Markdown." = "Turn on shelf-collect, forward several WeChat batches to “Save to DigUp Plus”, then open the shelf to deliver once or export Markdown.";
+"Prompt templates" = "Prompt templates";
+"Active prompt" = "Active prompt";
+"New prompt" = "New prompt";
+"Add" = "Add";
+"Reset default prompts" = "Reset default prompts";
+"Custom「发送到自定义」apps" = "Custom “Send to Custom” apps";
+"Add application…" = "Add application…";
+"Markdown / Obsidian folder" = "Markdown / Obsidian folder";
+"Not set — chosen on first export" = "Not set — chosen on first export";
+"Choose folder…" = "Choose folder…";
+"Open share shelf…" = "Open share shelf…";
+"Cancelled" = "Cancelled";

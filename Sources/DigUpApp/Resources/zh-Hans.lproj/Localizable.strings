@@ -687,3 +687,39 @@
 "Slate" = "岩灰";
 
 "Choose light or dark, and an accent. Match System follows macOS. Moss, Amber and Slate are DigUp accents; System Accent uses the Mac control color." = "可分别选择浅色／深色与强调色。「跟随系统」与 macOS 一致；苔绿、琥珀、岩灰为 DigUp 配色，「系统强调色」使用 Mac 控制色。";
+
+/* WeChat Share (DigUp Plus) */
+"WeChat Share" = "微信分享";
+"WeChat Share Shelf" = "微信分享暂存架";
+"Collect multiple WeChat forwards (100+), then deliver once." = "可分批转发超过 100 条，收齐后再一次投递。";
+"Shelf is empty — use「暂存到 DigUp Plus」in WeChat share menu." = "暂存架为空 — 在微信「转发到其他应用」里选「暂存到 DigUp Plus」。";
+"Deliver to Claude" = "发给 Claude";
+"Deliver to Codex" = "发给 Codex";
+"Export Markdown / Obsidian" = "导出 Markdown / Obsidian";
+"Clear" = "清空";
+"Collection cleared" = "已清空暂存";
+"Collection is empty" = "暂存为空";
+"Delivered to %@" = "已投递给 %@";
+"Copied to clipboard — paste into your app" = "已复制到剪贴板，请到目标应用粘贴";
+"Markdown exported" = "已导出 Markdown";
+"Choose Obsidian folder" = "选择 Obsidian 目录";
+"WeChat 4.1.13+ → merge forward → Forward to other apps. DigUp Plus entries appear in that menu." = "微信 4.1.13+：合并转发 → 转发到其他应用。DigUp Plus 入口会出现在该菜单。";
+"Share menu entries" = "分享菜单入口";
+"Not registered — rebuild/install DigUp.app first" = "未注册 — 请先重新打包/安装 DigUp.app";
+"Open System Settings…" = "打开系统设置…";
+"Shelf collects only (for 100+ batching)" = "暂存仅收集（用于超过 100 条分批）";
+"Attach prompt when delivering to AI" = "投递给 AI 时附带 Prompt";
+"Collection" = "分批收集";
+"Turn on shelf-collect, forward several WeChat batches to「暂存」, then open the shelf to deliver once or export Markdown." = "开启后，多次「暂存到 DigUp Plus」，再在暂存架一次投递或导出 Markdown。";
+"Prompt templates" = "Prompt 模板";
+"Active prompt" = "当前 Prompt";
+"New prompt" = "新 Prompt";
+"Add" = "添加";
+"Reset default prompts" = "恢复默认 Prompt";
+"Custom「发送到自定义」apps" = "「发送到自定义」的应用";
+"Add application…" = "添加应用…";
+"Markdown / Obsidian folder" = "Markdown / Obsidian 目录";
+"Not set — chosen on first export" = "未设置 — 首次导出会选择";
+"Choose folder…" = "选择目录…";
+"Open share shelf…" = "打开分享暂存架…";
+"Cancelled" = "已取消";

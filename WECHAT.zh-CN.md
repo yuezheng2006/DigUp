@@ -18,6 +18,7 @@
 
 - 实现：`Sources/DigUpShare` + `Sources/DigUpShareCore`；`build.sh` 装入 `DigUp.app/Contents/PlugIns/*.appex`
 - App Group：`3396ALL92C.group.com.yuezheng.digupplus.shared`（需在 Apple Developer → Identifiers 登记同名 App Group，并用 Team `3396ALL92C` 签名后，扩展才会稳定出现在微信分享列表）
+- **分享链路（对标微信流 / 渡口）**：设置 →「微信分享」可开关入口、编辑 Prompt 模板、添加自定义目标 App、指定 Obsidian 目录；「暂存」收入分批暂存架（突破单次 100 条），可一次投递 Claude/Codex 或导出 Markdown
 - 参考实现：[qzz0518/Dukou](https://github.com/qzz0518/Dukou)（MIT）；本仓库为 DigUp 品牌重写与装配，不捆绑 Dukou 二进制
 
 ## 使用

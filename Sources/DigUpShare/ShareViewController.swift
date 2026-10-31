@@ -151,7 +151,21 @@ final class ShareViewController: NSViewController {
                 // without drawing a panel, so the app decides — from one target,
                 // from a picker, or from a message saying the list is empty. See
                 // `CustomForwardDecision`.
-                intent: action.needsIntent ? BatchIntent(action: action, requestedAt: Date()) : nil,
+                intent: {
+                    guard action.needsIntent else { return nil }
+                    let prefs = SharePreferences.load()
+                    if action == .custom {
+                        let target = prefs.customTargets.first { $0.bundleIdentifier == prefs.lastCustomBundleID }
+                            ?? prefs.customTargets.first
+                        return BatchIntent(
+                            action: action,
+                            requestedAt: Date(),
+                            targetBundleIdentifier: target?.bundleIdentifier,
+                            targetDisplayName: target?.displayName
+                        )
+                    }
+                    return BatchIntent(action: action, requestedAt: Date())
+                }(),
                 in: inbox
             )
         } catch {

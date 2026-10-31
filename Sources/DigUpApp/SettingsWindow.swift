@@ -4,7 +4,7 @@ import Observation
 import SwiftUI
 
 enum SettingsTab: String, CaseIterable {
-    case general, folders, code, storage
+    case general, folders, code, storage, wechatShare
 
     var title: String {
         switch self {
@@ -12,6 +12,7 @@ enum SettingsTab: String, CaseIterable {
         case .folders: L("Folders")
         case .code: L("Code")
         case .storage: L("Storage")
+        case .wechatShare: L("WeChat Share")
         }
     }
 
@@ -21,6 +22,7 @@ enum SettingsTab: String, CaseIterable {
         case .folders: "folder"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .storage: "internaldrive"
+        case .wechatShare: "bubble.left.and.bubble.right"
         }
     }
 }
@@ -183,6 +185,7 @@ private struct SettingsPane: View {
                 case .folders: FolderSettings(state: state)
                 case .code: CodeSettings(state: state)
                 case .storage: StorageSettings(state: state)
+                case .wechatShare: WeChatShareSettings()
                 }
             }
             .frame(width: 580)
