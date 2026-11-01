@@ -111,47 +111,38 @@ final class WeChatShareShelfModel: ObservableObject {
     }
 
     func exportMarkdown() {
+        exportNotes(flavor: .markdown)
+    }
+
+    func exportObsidian() {
+        exportNotes(flavor: .obsidian)
+    }
+
+    private func exportNotes(flavor: WeChatMarkdownExport.Flavor) {
         let urls = rows.flatMap(\.zipURLs)
         guard !urls.isEmpty else {
             status = L("Collection is empty")
             return
         }
         do {
-            let folder = try resolveMarkdownFolder()
+            let folder = try resolveExportFolder(flavor: flavor)
             let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-            let out = folder.appendingPathComponent("DigUp-WeChat-\(stamp)", isDirectory: true)
-            try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-            var allRecords: [WeChatTranscriptRecord] = []
-            var title = "微信转发合集"
-            var media: [String] = []
-            for (index, zip) in urls.enumerated() {
-                let data = try Data(contentsOf: zip, options: .mappedIfSafe)
-                let extract = out.appendingPathComponent("batch-\(index + 1)", isDirectory: true)
-                try FileManager.default.createDirectory(at: extract, withIntermediateDirectories: true)
-                let names = try WeChatForwardZIP.extract(data, to: extract)
-                media += names.filter { !$0.lowercased().hasSuffix(".txt") }.map { "batch-\(index + 1)/\($0)" }
-                if let transcript = try WeChatForwardZIP.transcript(data) {
-                    if index == 0 {
-                        title = (transcript.path as NSString).deletingPathExtension
-                    }
-                    allRecords += transcript.records ?? []
-                }
-            }
-            let md = WeChatMarkdownExport.render(
-                title: title,
-                records: allRecords,
-                body: "",
-                mediaRelativePaths: media
-            )
-            try md.write(to: out.appendingPathComponent(WeChatMarkdownExport.fileName), atomically: true, encoding: .utf8)
-            NSWorkspace.shared.activateFileViewerSelecting([out])
-            status = L("Markdown exported")
+            let prefix = flavor == .obsidian ? "DigUp-Obsidian" : "DigUp-Markdown"
+            let out = folder.appendingPathComponent("\(prefix)-\(stamp)", isDirectory: true)
+            let result = try WeChatMarkdownExport.writeBundle(zipURLs: urls, to: out, flavor: flavor)
+            NSWorkspace.shared.activateFileViewerSelecting([result.markdownURL])
+            status = flavor == .obsidian ? L("Obsidian note exported") : L("Markdown exported")
         } catch {
             status = error.localizedDescription
         }
     }
 
-    private func resolveMarkdownFolder() throws -> URL {
+    private func resolveExportFolder(flavor: WeChatMarkdownExport.Flavor) throws -> URL {
+        if flavor == .markdown {
+            let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+            return downloads
+        }
         if let bookmark = prefs.markdownFolderBookmark {
             var stale = false
             let url = try URL(
@@ -175,7 +166,7 @@ final class WeChatShareShelfModel: ObservableObject {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = L("Choose Obsidian folder")
+        panel.prompt = L("Choose Obsidian vault")
         guard panel.runModal() == .OK, let url = panel.url else {
             throw NSError(
                 domain: "DigUpPlus.Share",
@@ -222,7 +213,8 @@ struct WeChatShareShelfView: View {
                 Button(L("Deliver to Codex")) { model.deliver(to: .codex) }
             }
             HStack {
-                Button(L("Export Markdown / Obsidian")) { model.exportMarkdown() }
+                Button(L("Export Markdown")) { model.exportMarkdown() }
+                Button(L("Export to Obsidian")) { model.exportObsidian() }
                 Spacer()
                 Button(L("Clear"), role: .destructive) { model.clear() }
             }

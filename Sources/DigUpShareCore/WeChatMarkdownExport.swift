@@ -5,12 +5,20 @@ import Foundation
 public enum WeChatMarkdownExport {
     public static let fileName = "聊天记录.md"
 
+    public enum Flavor: String, Sendable {
+        /// Plain Markdown folder (Downloads / any folder).
+        case markdown
+        /// Obsidian vault note: tags + cssclass for theming.
+        case obsidian
+    }
+
     public static func render(
         title: String,
         records: [WeChatTranscriptRecord],
         body: String,
         mediaRelativePaths: [String] = [],
-        exportedAt: Date = Date()
+        exportedAt: Date = Date(),
+        flavor: Flavor = .markdown
     ) -> String {
         let day = DateFormatter()
         let time = DateFormatter()
@@ -31,6 +39,17 @@ public enum WeChatMarkdownExport {
             "messages: \(records.isEmpty ? 0 : records.count)",
             "exported: \(stamp.string(from: exportedAt))",
             "generator: DigUp Plus",
+        ]
+        if flavor == .obsidian {
+            lines += [
+                "tags:",
+                "  - wechat",
+                "  - digup-plus",
+                "cssclasses:",
+                "  - digup-wechat",
+            ]
+        }
+        lines += [
             "---",
             "",
             "# \(escape(title))",
@@ -47,7 +66,7 @@ public enum WeChatMarkdownExport {
                     currentDay = messageDay
                     lines += ["", "## \(messageDay)"]
                 }
-                lines += ["", "**\(escape(record.sender))** \(time.string(from: record.date))", ""]
+                lines += ["", "### \(escape(record.sender)) · \(time.string(from: record.date))", ""]
                 for line in record.text.components(separatedBy: "\n") {
                     lines.append(linkify(line, media: mediaRelativePaths))
                 }
@@ -59,11 +78,48 @@ public enum WeChatMarkdownExport {
             !records.contains { $0.text.contains((path as NSString).lastPathComponent) }
         }
         if !unused.isEmpty {
-            lines += ["", "## 其他附件", ""]
+            lines += ["", "## 附件", ""]
             lines += unused.map { "- [\(escape(($0 as NSString).lastPathComponent))](\($0))" }
         }
 
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Extract ZIPs and write one Markdown note under `destination` (created).
+    @discardableResult
+    public static func writeBundle(
+        zipURLs: [URL],
+        to destination: URL,
+        flavor: Flavor,
+        fileManager: FileManager = .default
+    ) throws -> (markdownURL: URL, recordCount: Int, mediaCount: Int) {
+        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+        var allRecords: [WeChatTranscriptRecord] = []
+        var title = "微信转发合集"
+        var media: [String] = []
+        for (index, zip) in zipURLs.enumerated() {
+            let data = try Data(contentsOf: zip, options: .mappedIfSafe)
+            let extract = destination.appendingPathComponent("batch-\(index + 1)", isDirectory: true)
+            try fileManager.createDirectory(at: extract, withIntermediateDirectories: true)
+            let names = try WeChatForwardZIP.extract(data, to: extract)
+            media += names.filter { !$0.lowercased().hasSuffix(".txt") }.map { "batch-\(index + 1)/\($0)" }
+            if let transcript = try WeChatForwardZIP.transcript(data) {
+                if index == 0 {
+                    title = (transcript.path as NSString).deletingPathExtension
+                }
+                allRecords += transcript.records ?? []
+            }
+        }
+        let md = render(
+            title: title,
+            records: allRecords,
+            body: "",
+            mediaRelativePaths: media,
+            flavor: flavor
+        )
+        let mdURL = destination.appendingPathComponent(fileName)
+        try md.write(to: mdURL, atomically: true, encoding: .utf8)
+        return (mdURL, allRecords.count, media.count)
     }
 
     private static func linkify(_ line: String, media: [String]) -> String {

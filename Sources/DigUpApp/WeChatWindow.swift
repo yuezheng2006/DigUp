@@ -43,6 +43,10 @@ final class WeChatState {
     var exportEnd = Date()
     var exportFolder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+    /// Offline Vision OCR into HTML / corpus during export.
+    var exportRecognizeImageText = true
+    /// Skip messages at/before the last successful export watermark for this session.
+    var exportIncrementalOnly = false
     var exporting = false
     var exportStatus = ""
     private var exportTask: Task<WeChatExportResult, Error>?
@@ -79,12 +83,17 @@ final class WeChatState {
         let url = exportFolder.appendingPathComponent(WeChatExportPlan.folderName())
         let readerPath = executable
         let zone = TimeZone.current
+        let ocr = exportRecognizeImageText
+        let watermark = exportIncrementalOnly ? WeChatExportCursor.lastTimestamp(for: session.id) : nil
         exportPresented = false
         exporting = true
         exportStatus = L("Exporting…")
         let directory = names
+        let contactBook = profiles
         let selfID = profiles.selfID
         let selfAliases = profiles.selfAliases
+        let sessionID = session.id
+        let peerID = session.id
         let work = Task.detached { [weak self] in
             try WeChatReader(executable: readerPath).exportConversation(
                 session: session, to: url, since: bounds.since, until: bounds.until, timeZone: zone,
@@ -96,15 +105,36 @@ final class WeChatState {
                 },
                 displayName: { directory.displayName(for: $0) },
                 selfUsername: selfID,
-                selfAliases: selfAliases)
+                selfAliases: selfAliases,
+                recognizeImageText: ocr,
+                afterTimestamp: watermark,
+                avatarURL: { sender in
+                    let key = sender.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if key.isEmpty {
+                        return contactBook.people[peerID]?.avatar
+                    }
+                    return directory.avatarURL(for: key, in: contactBook)
+                        ?? contactBook.people[key]?.avatar
+                        ?? contactBook.people[peerID]?.avatar
+                })
         }
         exportTask = work
         Task { @MainActor in
             do {
                 let report = try await work.value
-                self.exportStatus = L(
-                    "Exported {0} messages · {1} active days · {2} images · {3} unavailable",
-                    report.messages, report.stats.activeDays, report.images, report.unavailableImages)
+                if let last = report.lastTimestamp {
+                    WeChatExportCursor.setLastTimestamp(last, for: sessionID)
+                }
+                if report.ocrImages > 0 {
+                    self.exportStatus = L(
+                        "Exported {0} messages · {1} active days · {2} images · {3} unavailable · OCR {4}",
+                        report.messages, report.stats.activeDays, report.images,
+                        report.unavailableImages, report.ocrImages)
+                } else {
+                    self.exportStatus = L(
+                        "Exported {0} messages · {1} active days · {2} images · {3} unavailable",
+                        report.messages, report.stats.activeDays, report.images, report.unavailableImages)
+                }
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             } catch is CancellationError {
                 self.exportStatus = L("Export cancelled")
@@ -807,8 +837,27 @@ private struct WeChatExportSheet: View {
                 }
                 .disabled(state.exporting)
             }
+            Toggle(L("Recognize text in images (OCR)"), isOn: $state.exportRecognizeImageText)
+            Toggle(isOn: $state.exportIncrementalOnly) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("Only new messages since last export"))
+                    if !state.selection.isEmpty,
+                       let stamp = WeChatExportCursor.lastTimestamp(for: state.selection) {
+                        Text(L("Last export watermark: {0}",
+                               Date(timeIntervalSince1970: stamp).formatted(date: .abbreviated, time: .shortened)))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    } else {
+                        Text(L("No previous export watermark for this chat yet."))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .disabled(state.selection.isEmpty
+                      || WeChatExportCursor.lastTimestamp(for: state.selection) == nil)
             Text(L("A folder with text, HTML report, linked images and files. Unavailable media are marked."))
                 .font(.caption).foregroundStyle(.secondary)
+            Text(L("OCR uses Apple Vision offline. HTML report includes on-page search."))
+                .font(.caption2).foregroundStyle(.secondary)
             HStack {
                 Spacer()
                 Button(L("Cancel")) { dismiss() }

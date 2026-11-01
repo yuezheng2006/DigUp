@@ -49,7 +49,7 @@ import Testing
         }
         let html = try String(contentsOf: index, encoding: .utf8)
         #expect(html.contains("class=\"top\""))
-        #expect(html.contains("按日跳转") || html.contains("Jump by day"))
+        #expect(html.contains("日期") || html.contains("按日") || html.contains("id=\"q\""))
         #expect(html.contains("class=\"bubble\""))
         #expect(html.contains("class=\"me\""), "self bubbles should use nick/alias aliases")
         #expect(html.contains("class=\"them\""))

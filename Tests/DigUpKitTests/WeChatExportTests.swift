@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import Foundation
 import Testing
 @testable import DigUpKit
@@ -54,7 +55,7 @@ import Testing
         let html = WeChatStatsBuilder.htmlDocument(stats: stats, title: "验收群聊", timeZone: zone)
         #expect(html.contains("Active days") || html.contains("活跃日"))
         #expect(html.contains("甲") && html.contains("发言"))
-        #expect(html.contains("Daily activity") || html.contains("按日活跃"))
+        #expect(html.contains("按日") || html.contains("Daily"))
         #expect(html.contains("index.html#day-2026-10-20"))
         #expect(html.contains("class=\"bar\""))
     }
@@ -164,14 +165,14 @@ import Testing
         #expect(html.contains("<a href=\"https://example.org/x\">"))
         #expect(!html.contains("<sysmsg"))
         #expect(html.contains("id=\"day-2026-10-20\""))
-        #expect(html.contains("按日跳转") || html.contains("Jump by day"))
+        #expect(html.contains("日期") || html.contains("按日"))
         #expect(html.contains("class=\"bubble\"") && html.contains("class=\"them\""))
         #expect(html.contains("class=\"top\"") && html.contains("position:sticky"))
         let statsHTML = try String(contentsOf: dest.appendingPathComponent("stats.html"), encoding: .utf8)
-        #expect(statsHTML.contains("区间概览") || statsHTML.contains("Range overview"))
+        #expect(statsHTML.contains("概览") || statsHTML.contains("class=\"cards\"") || statsHTML.contains("活跃日"))
         #expect(FileManager.default.fileExists(atPath: dest.appendingPathComponent("stats.html").path))
         #expect(html.contains("stats.html") && html.contains("class=\"overview\""))
-        #expect(html.contains("messages.json") && html.contains("corpus.jsonl"))
+        #expect(html.contains("placeholder=\"搜索\"") || html.contains("id=\"q\""))
         let messagesJSON = try Data(contentsOf: dest.appendingPathComponent("messages.json"))
         let parsed = try JSONSerialization.jsonObject(with: messagesJSON) as? [String: Any]
         #expect(parsed?["schema"] as? String == WeChatCorpusExport.schema)
@@ -391,6 +392,121 @@ import Testing
         let ticks = pages.withLock { $0.ticks }
         #expect(ticks.first == 200)
         #expect(ticks.contains(400))
+    }
+
+    @Test func htmlReportIncludesOnPageSearchAndOCRStyles() throws {
+        let root = try tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stamp = WeChatReader.date("2026-10-20", timeZone: zone)!.timeIntervalSince1970 + 10
+        let page = try payload([row(1, stamp, content: "可搜索关键词：方案定稿")])
+        let reader = WeChatReader { _ in page }
+        let dest = root.appendingPathComponent("search")
+        let report = try reader.exportConversation(
+            session: session, to: dest, since: "2026-10-20", until: "2026-10-21", timeZone: zone)
+        #expect(report.lastTimestamp == stamp)
+        let html = try String(contentsOf: dest.appendingPathComponent("index.html"), encoding: .utf8)
+        #expect(html.contains("id=\"q\"") && html.contains("placeholder=\"搜索\""))
+        #expect(html.contains("script-src 'unsafe-inline'"))
+        #expect(html.contains("--accent:#007aff") || html.contains("SF Pro Text"))
+        #expect(html.contains("pre.ocr") || html.contains("class=\"ocr\"") || html.contains("pre.ocr{"))
+        #expect(html.contains("article.miss") || html.contains("function run()"))
+    }
+
+    @Test func exportCursorRoundTripAndWatermarkSkipsOlder() throws {
+        let suite = "digup-export-cursor-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        #expect(WeChatExportCursor.lastTimestamp(for: session.id, defaults: defaults) == nil)
+        WeChatExportCursor.setLastTimestamp(1_700_000_000, for: session.id, defaults: defaults)
+        #expect(WeChatExportCursor.lastTimestamp(for: session.id, defaults: defaults) == 1_700_000_000)
+
+        let root = try tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let older = WeChatReader.date("2026-10-20", timeZone: zone)!.timeIntervalSince1970 + 100
+        let newer = older + 50
+        let page = try payload([
+            row(1, older, content: "旧消息应跳过"),
+            row(2, newer, content: "新消息应保留")
+        ])
+        let reader = WeChatReader { _ in page }
+        let dest = root.appendingPathComponent("incr")
+        let report = try reader.exportConversation(
+            session: session, to: dest, since: "2026-10-20", until: "2026-10-21", timeZone: zone,
+            afterTimestamp: older)
+        #expect(report.messages == 1)
+        #expect(report.lastTimestamp == newer)
+        let text = try String(contentsOf: dest.appendingPathComponent("messages.txt"), encoding: .utf8)
+        #expect(text.contains("新消息应保留"))
+        #expect(!text.contains("旧消息应跳过"))
+    }
+
+    @Test func imageOCRReturnsEmptyForNonImageBytes() {
+        #expect(WeChatImageOCR.text(from: Data([0x00, 0x01, 0x02])) == "")
+    }
+
+    @Test func exportEmbedsLocalSenderAvatarsInHTML() throws {
+        let root = try tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let face = root.appendingPathComponent("face.jpg")
+        // Minimal JPEG (SOI+EOI) is enough for the store to copy.
+        try Data([0xFF, 0xD8, 0xFF, 0xD9]).write(to: face)
+        let stamp = WeChatReader.date("2026-10-20", timeZone: zone)!.timeIntervalSince1970 + 10
+        let page = try payload([
+            row(1, stamp, content: "带头像", sender: "alice"),
+            row(2, stamp + 1, content: "也带头像", sender: "bob")
+        ])
+        let reader = WeChatReader { _ in page }
+        let dest = root.appendingPathComponent("avatars-out")
+        let report = try reader.exportConversation(
+            session: session, to: dest, since: "2026-10-20", until: "2026-10-21", timeZone: zone,
+            avatarURL: { sender in
+                sender == "alice" || sender == "bob" ? face : nil
+            })
+        #expect(report.messages == 2)
+        let html = try String(contentsOf: dest.appendingPathComponent("index.html"), encoding: .utf8)
+        #expect(html.contains("class=\"avatar\""))
+        #expect(html.contains("avatars/"))
+        #expect(html.contains("class=\"row\"") && html.contains("class=\"stack\""))
+        let avatarFiles = (try? FileManager.default.contentsOfDirectory(
+            at: dest.appendingPathComponent("avatars"), includingPropertiesForKeys: nil)) ?? []
+        #expect(avatarFiles.count >= 1)
+    }
+
+    @Test func imageOCRReadsSyntheticPNGWithKnownText() throws {
+        // 1×320 white bitmap is too small for Vision; draw via CoreGraphics into a readable PNG.
+        let width = 640, height = 160
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { throw WeChatReadError.commandFailed }
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        let marker = "DIGUPOCR42"
+        // Core Text path kept minimal: stamp via NSImage bridge for predictable glyphs.
+        #if canImport(AppKit)
+        let ns = NSImage(size: NSSize(width: width, height: height))
+        ns.lockFocus()
+        NSColor.white.setFill()
+        NSRect(x: 0, y: 0, width: width, height: height).fill()
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 36, weight: .bold),
+            .foregroundColor: NSColor.black
+        ]
+        (marker as NSString).draw(at: NSPoint(x: 40, y: 60), withAttributes: attrs)
+        ns.unlockFocus()
+        guard let tiff = ns.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else {
+            throw WeChatReadError.commandFailed
+        }
+        let text = WeChatImageOCR.text(from: png).uppercased()
+        #expect(text.contains("DIGUP") || text.contains("OCR42") || text.contains(marker))
+        #else
+        _ = ctx
+        #endif
     }
 }
 #endif

@@ -40,11 +40,36 @@ public struct WeChatExportResult: Sendable {
     public let messages: Int
     public let images: Int
     public let unavailableImages: Int
+    public let ocrImages: Int
+    public let lastTimestamp: Double?
     public let stats: WeChatConversationStats
     public init(messages: Int, images: Int, unavailableImages: Int,
+                ocrImages: Int = 0, lastTimestamp: Double? = nil,
                 stats: WeChatConversationStats = .empty) {
         self.messages = messages; self.images = images
-        self.unavailableImages = unavailableImages; self.stats = stats
+        self.unavailableImages = unavailableImages
+        self.ocrImages = ocrImages
+        self.lastTimestamp = lastTimestamp
+        self.stats = stats
+    }
+}
+
+/// Per-session last-export watermark for incremental exports (UserDefaults).
+public enum WeChatExportCursor: Sendable {
+    private static let prefix = "DUWeChatExportCursor."
+
+    public static func lastTimestamp(for sessionID: String,
+                                     defaults: UserDefaults = .standard) -> Double? {
+        let key = prefix + sessionID
+        guard defaults.object(forKey: key) != nil else { return nil }
+        let value = defaults.double(forKey: key)
+        return value > 0 && value.isFinite ? value : nil
+    }
+
+    public static func setLastTimestamp(_ timestamp: Double, for sessionID: String,
+                                        defaults: UserDefaults = .standard) {
+        guard timestamp > 0, timestamp.isFinite else { return }
+        defaults.set(timestamp, forKey: prefix + sessionID)
     }
 }
 
@@ -159,6 +184,7 @@ public enum WeChatCorpusExport {
         ]
         if let image = record["image"] as? String { line["image"] = image }
         if let file = record["file"] as? String { line["file"] = file }
+        if let ocr = record["ocr"] as? String, !ocr.isEmpty { line["ocr"] = ocr }
         var data = try JSONSerialization.data(withJSONObject: line, options: [.sortedKeys])
         data.append(contentsOf: "\n".utf8)
         return data
@@ -269,16 +295,25 @@ public struct WeChatStatsBuilder: Sendable {
     }
 
     public func finish(top: Int = 10) -> WeChatConversationStats {
-        let ranked = senders.map { WeChatConversationStats.Sender(name: $0.key, count: $0.value) }
-            .sorted { $0.count == $1.count ? $0.name < $1.name : $0.count > $1.count }
+        var ranked: [WeChatConversationStats.Sender] = []
+        ranked.reserveCapacity(senders.count)
+        for (name, count) in senders {
+            ranked.append(WeChatConversationStats.Sender(name: name, count: count))
+        }
+        ranked.sort { lhs, rhs in
+            if lhs.count == rhs.count { return lhs.name < rhs.name }
+            return lhs.count > rhs.count
+        }
+        let total = byKind.values.reduce(0, +)
+        let limit = max(0, top)
         return WeChatConversationStats(
-            messageCount: byKind.values.reduce(0, +),
+            messageCount: total,
             activeDays: days.count,
             firstTimestamp: first,
             lastTimestamp: last,
             byKind: byKind,
             byDay: byDay,
-            topSenders: Array(ranked.prefix(max(0, top))),
+            topSenders: Array(ranked.prefix(limit)),
             imagesSaved: imagesSaved,
             imagesUnavailable: imagesUnavailable)
     }
@@ -339,90 +374,143 @@ public struct WeChatStatsBuilder: Sendable {
                 + "<td><div class=\"bar mini\"><i style=\"width:\(pct)%\"></i></div></td></tr>"
         }
         if daysHTML.isEmpty { daysHTML = "<tr><td colspan=\"3\">—</td></tr>" }
+        // Keep charts only — skip duplicate tables for a quieter Apple-style page.
+        _ = kindsHTML; _ = sendersHTML
         return """
-        <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">\
+        <!doctype html><html lang="zh-Hans"><meta charset="utf-8"><meta name="viewport" content="width=device-width">\
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">\
-        <title>\(escape(title)) · overview</title><style>\
-        body{max-width:820px;margin:32px auto;padding:16px;font:16px/1.45 system-ui,-apple-system,sans-serif;color:#111}\
-        h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:28px 0 10px}nav a{color:#06c}\
-        .cards{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0}\
-        .card{flex:1 1 120px;padding:14px 16px;background:#f6f6f6;border-radius:10px}\
-        .card b{display:block;font-size:22px;margin-top:4px}\
-        .card span{color:#666;font-size:13px}\
-        table{width:100%;border-collapse:collapse;margin:12px 0 24px}\
-        th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e6e6e6}\
-        th{color:#666;font-weight:600;font-size:13px}\
-        .bar-row{display:grid;grid-template-columns:minmax(72px,140px) 1fr 40px;gap:8px;align-items:center;margin:6px 0}\
-        .bar-row span{font-size:13px;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
-        .bar{height:10px;background:#eee;border-radius:999px;overflow:hidden}\
-        .bar.mini{height:8px;min-width:80px}\
-        .bar i{display:block;height:100%;background:linear-gradient(90deg,#5b9cff,#3a7bfd);border-radius:999px}\
-        .bar-row b{font-size:13px;text-align:right;color:#333}\
-        @media print{nav{display:none}.bar i{-webkit-print-color-adjust:exact;print-color-adjust:exact}}\
-        </style>\
-        <nav><a href="index.html">← 聊天记录 / Messages</a> · <a href="messages.json">messages.json</a> · <a href="corpus.jsonl">corpus.jsonl</a></nav>\
+        <title>\(escape(title))</title><style>\(WeChatHTMLReport.statsStyle)</style>\
+        <main class="page">\
+        <a class="back" href="index.html">聊天</a>\
         <h1>\(escape(title))</h1>\
-        <p style="color:#666">区间概览 / Range overview · \(escape(when(stats.firstTimestamp))) → \(escape(when(stats.lastTimestamp)))</p>\
+        <p class="sub">\(escape(when(stats.firstTimestamp))) – \(escape(when(stats.lastTimestamp)))</p>\
         <div class="cards">\
-        <div class="card"><span>消息 / Messages</span><b>\(stats.messageCount)</b></div>\
-        <div class="card"><span>活跃日 / Active days</span><b>\(stats.activeDays)</b></div>\
-        <div class="card"><span>图片已保存 / Images</span><b>\(stats.imagesSaved)</b></div>\
-        <div class="card"><span>图片不可用 / Unavailable</span><b>\(stats.imagesUnavailable)</b></div>\
+        <div class="card"><span>消息</span><b>\(stats.messageCount)</b></div>\
+        <div class="card"><span>活跃日</span><b>\(stats.activeDays)</b></div>\
+        <div class="card"><span>图片</span><b>\(stats.imagesSaved)</b></div>\
+        <div class="card"><span>缺失</span><b>\(stats.imagesUnavailable)</b></div>\
         </div>\
-        <h2>类型分布 / Types</h2>\(kindBars.isEmpty ? "<p>—</p>" : kindBars)\
-        <table><thead><tr><th>类型</th><th>条数</th></tr></thead><tbody>\(kindsHTML)</tbody></table>\
-        <h2>发言 Top / Top senders</h2>\(senderBars.isEmpty ? "<p>—</p>" : senderBars)\
-        <table><thead><tr><th>#</th><th>名称</th><th>条数</th></tr></thead><tbody>\(sendersHTML)</tbody></table>\
-        <h2>按日活跃 / Daily activity</h2>\
-        <table><thead><tr><th>日期</th><th>条数</th><th></th></tr></thead><tbody>\(daysHTML)</tbody></table>
+        <h2>类型</h2>\(kindBars.isEmpty ? "<p class=\"empty\">—</p>" : kindBars)\
+        <h2>发言</h2>\(senderBars.isEmpty ? "<p class=\"empty\">—</p>" : senderBars)\
+        <h2>按日</h2>\
+        <table><thead><tr><th>日期</th><th>条数</th><th></th></tr></thead><tbody>\(daysHTML)</tbody></table>\
+        </main>
         """
     }
 
     public static func indexFooter(stats: WeChatConversationStats) -> String {
-        var footer = "<section class=\"overview\"><h2>区间概览</h2><ul>"
-        footer += "<li>消息 \(stats.messageCount) · 活跃日 \(stats.activeDays)</li>"
+        var footer = "<section class=\"overview\"><p>"
+        footer += "\(stats.messageCount) 条 · \(stats.activeDays) 天"
         if let top = stats.topSenders.first {
-            footer += "<li>最高频：\(WeChatExportFormatting.escape(top.name))（\(top.count)）</li>"
+            footer += " · \(WeChatExportFormatting.escape(top.name)) \(top.count)"
         }
-        footer += "<li><a href=\"stats.html\">查看完整概览 / Full overview</a></li></ul></section>"
+        footer += " · <a href=\"stats.html\">概览</a></p></section>"
         return footer
     }
 }
 
-/// Stronger HTML chat report (day TOC, bubbles, sticky nav) — no JS; CSP-safe.
+/// Apple-inspired minimal HTML chat report — CSP allows only inline style/script.
 public enum WeChatHTMLReport {
     public static let style = """
-        :root{--bg:#f3f5f8;--card:#fff;--me:#d8ecff;--them:#fff;--line:#e6e8ec;--muted:#667085;--text:#101828}\
+        :root{--bg:#f5f5f7;--surface:#fff;--me:#e8f1ff;--them:#fff;--text:#1d1d1f;--muted:#86868b;\
+        --line:rgba(0,0,0,.06);--accent:#007aff;--mark:#ff9f0a}\
+        *{box-sizing:border-box}\
+        body{margin:0;background:var(--bg);color:var(--text);\
+        font:15px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;\
+        -webkit-font-smoothing:antialiased}\
+        .top{position:sticky;top:0;z-index:5;padding:14px 20px 12px;\
+        background:rgba(245,245,247,.82);backdrop-filter:saturate(180%) blur(20px);\
+        -webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--line)}\
+        .top h1{font-size:21px;font-weight:600;letter-spacing:-.02em;margin:0}\
+        .top .nav{margin-top:6px;font-size:13px;color:var(--muted);display:flex;gap:14px;align-items:center;flex-wrap:wrap}\
+        .top a{color:var(--accent);text-decoration:none}\
+        .top .nav span{margin-left:auto}\
+        .search{margin-top:10px}\
+        .search input{width:100%;max-width:420px;padding:9px 12px;border:0;border-radius:10px;\
+        background:rgba(0,0,0,.05);font:15px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;outline:none}\
+        .search input:focus{background:rgba(0,0,0,.07);box-shadow:0 0 0 3px rgba(0,122,255,.2)}\
+        .search .hit{display:inline-block;margin-top:6px;font-size:12px;color:var(--muted)}\
+        .wrap{max-width:720px;margin:0 auto;padding:8px 16px 48px}\
+        details.toc{margin:12px 0 8px;padding:0;border:0;background:transparent}\
+        details.toc summary{cursor:pointer;list-style:none;font-size:13px;font-weight:500;color:var(--muted)}\
+        details.toc summary::-webkit-details-marker{display:none}\
+        details.toc .days{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}\
+        details.toc a{font-size:12px;color:var(--text);background:rgba(0,0,0,.04);padding:5px 10px;\
+        border-radius:980px;text-decoration:none}\
+        .day{margin:28px 0 12px;text-align:center}\
+        .day span{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.01em}\
+        article{margin:10px 0;max-width:100%}\
+        article .row{display:flex;gap:8px;align-items:flex-end;max-width:78%}\
+        article.them .row{margin-right:auto}\
+        article.me .row{margin-left:auto;flex-direction:row-reverse}\
+        article.system .row{margin:18px auto;max-width:100%;justify-content:center}\
+        article.miss{display:none!important}\
+        article.mark .bubble{box-shadow:0 0 0 2px var(--mark)}\
+        .avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 32px;\
+        background:rgba(0,0,0,.06);display:block}\
+        span.avatar.blank{display:inline-flex;align-items:center;justify-content:center;\
+        font-size:12px;font-weight:600;color:var(--muted);line-height:1}\
+        article.system .avatar{display:none}\
+        .stack{display:flex;flex-direction:column;min-width:0;max-width:100%}\
+        article.me .stack{align-items:flex-end}\
+        article.them .stack{align-items:flex-start}\
+        article header{font-size:11px;color:var(--muted);margin:0 4px 4px;font-weight:500}\
+        .bubble{background:var(--them);border-radius:18px;padding:9px 13px;\
+        overflow-wrap:anywhere;white-space:pre-wrap;border:1px solid var(--line)}\
+        article.me .bubble{background:var(--me);border-color:transparent}\
+        article.system .bubble{background:transparent;border:0;color:var(--muted);font-size:12px;text-align:center;padding:0}\
+        .quote{margin:0;padding:8px 0 8px 10px;border-left:2px solid rgba(0,0,0,.12)}\
+        .quote .quoted{color:var(--muted);font-size:13px;margin-bottom:6px}.quote .reply{color:var(--text)}\
+        .media,.file,.applet,.link,.other{color:var(--muted);font-size:13px}\
+        pre.ocr{margin:8px 0 0;padding:8px 10px;background:rgba(0,0,0,.03);border-radius:10px;\
+        font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;color:var(--muted)}\
+        .bubble img:not(.avatar){max-width:100%;max-height:420px;margin-top:6px;border-radius:12px;display:block}\
+        a{color:var(--accent);overflow-wrap:anywhere}\
+        .overview{margin:36px 0 0;padding:16px 0 0;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}\
+        .overview a{color:var(--accent);text-decoration:none}\
+        @media print{.top{position:static;background:#fff;backdrop-filter:none}details.toc,.search{display:none}\
+        article{break-inside:avoid;display:block!important}}
+        """
+
+    public static let statsStyle = """
+        :root{--bg:#f5f5f7;--surface:#fff;--text:#1d1d1f;--muted:#86868b;--line:rgba(0,0,0,.06);--accent:#007aff}\
         *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);\
-        font:15px/1.5 system-ui,-apple-system,sans-serif}\
-        .top{position:sticky;top:0;z-index:5;backdrop-filter:saturate(1.2) blur(8px);\
-        background:rgba(243,245,248,.92);border-bottom:1px solid var(--line);padding:10px 16px}\
-        .top h1{font-size:17px;margin:0 0 4px}.top .nav{font-size:13px;color:var(--muted)}\
-        .top a{color:#175cd3;text-decoration:none;margin-right:10px}\
-        .wrap{max-width:860px;margin:0 auto;padding:16px}\
-        details.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:16px}\
-        details.toc summary{cursor:pointer;font-weight:600}\
-        details.toc .days{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}\
-        details.toc a{font-size:13px;color:#175cd3;background:#eff4ff;padding:4px 8px;border-radius:999px;text-decoration:none}\
-        .day{margin:22px 0 8px;text-align:center}\
-        .day span{display:inline-block;background:#e8edf5;color:var(--muted);font-size:12px;padding:4px 10px;border-radius:999px}\
-        article{display:flex;flex-direction:column;margin:10px 0;max-width:78%}\
-        article.me{margin-left:auto;align-items:flex-end}article.them{margin-right:auto;align-items:flex-start}\
-        article.system{max-width:100%;align-items:center;margin:14px auto}\
-        article header{font-size:12px;color:var(--muted);margin-bottom:4px}\
-        .bubble{background:var(--them);border:1px solid var(--line);border-radius:14px;padding:10px 12px;\
-        box-shadow:0 1px 0 rgba(16,24,40,.04);overflow-wrap:anywhere;white-space:pre-wrap}\
-        article.me .bubble{background:var(--me);border-color:#b6d8f8}\
-        article.system .bubble{background:transparent;border:0;box-shadow:none;color:var(--muted);font-size:13px;text-align:center;padding:0}\
-        .quote{margin:0;border-left:3px solid #c5d0e0;padding:8px 10px;background:#f8fafc;border-radius:0 8px 8px 0}\
-        .quote .quoted{color:#475467;font-size:13px;margin-bottom:6px}.quote .reply{color:var(--text)}\
-        .media,.file,.applet,.link,.other{color:#344054}\
-        img{max-width:100%;max-height:480px;margin-top:8px;border-radius:8px;display:block}\
-        a{color:#175cd3;overflow-wrap:anywhere}\
-        .overview{margin-top:28px;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;font-size:14px}\
-        .overview ul{padding-left:18px}\
-        @media print{.top{position:static;background:#fff}details.toc{display:none}\
-        article{max-width:100%;break-inside:avoid}.bubble{box-shadow:none}}
+        font:15px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;\
+        -webkit-font-smoothing:antialiased}\
+        .page{max-width:680px;margin:0 auto;padding:28px 20px 56px}\
+        .back{display:inline-block;margin-bottom:18px;color:var(--accent);text-decoration:none;font-size:15px}\
+        h1{font-size:28px;font-weight:600;letter-spacing:-.03em;margin:0 0 6px}\
+        .sub{margin:0 0 22px;color:var(--muted);font-size:13px}\
+        h2{font-size:13px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:.02em;\
+        margin:28px 0 12px}\
+        .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}\
+        .card{background:var(--surface);border-radius:14px;padding:14px 12px;border:1px solid var(--line)}\
+        .card span{display:block;font-size:12px;color:var(--muted)}\
+        .card b{display:block;margin-top:6px;font-size:22px;font-weight:600;letter-spacing:-.02em}\
+        .bar-row{display:grid;grid-template-columns:minmax(56px,120px) 1fr 36px;gap:10px;align-items:center;margin:8px 0}\
+        .bar-row span{font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
+        .bar{height:6px;background:rgba(0,0,0,.06);border-radius:980px;overflow:hidden}\
+        .bar.mini{height:6px;min-width:64px}\
+        .bar i{display:block;height:100%;background:var(--accent);border-radius:980px}\
+        .bar-row b{font-size:12px;font-weight:500;text-align:right;color:var(--muted)}\
+        table{width:100%;border-collapse:collapse;margin-top:4px}\
+        th,td{text-align:left;padding:10px 4px;border-bottom:1px solid var(--line);font-size:13px}\
+        th{color:var(--muted);font-weight:500}\
+        td a{color:var(--accent);text-decoration:none}\
+        .empty{color:var(--muted)}\
+        @media (max-width:560px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}\
+        @media print{.back{display:none}.bar i{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+        """
+
+    public static let searchScript = """
+        <script>(function(){var i=document.getElementById('q'),h=document.getElementById('hits');\
+        if(!i||!h)return;function run(){var q=(i.value||'').trim().toLowerCase(),n=0,first=null;\
+        document.querySelectorAll('article').forEach(function(a){a.classList.remove('miss','mark');\
+        if(!q)return;var t=(a.textContent||'').toLowerCase();if(t.indexOf(q)<0)a.classList.add('miss');\
+        else{a.classList.add('mark');n++;if(!first)first=a;}});h.textContent=q?(n+' 条'):'';\
+        if(first)first.scrollIntoView({block:'center',behavior:'smooth'});}\
+        i.addEventListener('input',run);i.addEventListener('keydown',function(e){if(e.key==='Escape'){i.value='';run();}});\
+        })();</script>
         """
 
     public static func dayKey(_ timestamp: Double, timeZone: TimeZone) -> String {
@@ -850,17 +938,24 @@ public struct WeChatReader: Sendable {
     /// Dates are half-open; nil bounds mean all local history, independent of the reading-page cap.
     /// Writes are buffered; JPEG/PNG payloads are stored as-is (no decode→PNG round-trip).
     /// `progress` is invoked after each page with `(messages, images)` written so far.
+    /// `recognizeImageText`: Apple Vision OCR into HTML / corpus (offline).
+    /// `afterTimestamp`: skip messages at or before this watermark (incremental export).
+    /// `avatarURL`: resolve sender → WeChat CDN / local avatar (downloaded into `avatars/`).
     public func exportConversation(session: WeChatSession, to destination: URL, since: String? = nil,
                            until: String? = nil, timeZone: TimeZone = .current,
                            progress: (@Sendable (Int, Int) -> Void)? = nil,
                            displayName: (@Sendable (String) -> String)? = nil,
                            selfUsername: String? = nil,
-                           selfAliases: Set<String> = []) throws -> WeChatExportResult {
+                           selfAliases: Set<String> = [],
+                           recognizeImageText: Bool = false,
+                           afterTimestamp: Double? = nil,
+                           avatarURL: (@Sendable (String) -> URL?)? = nil) throws -> WeChatExportResult {
         let start = since.flatMap { Self.date($0, timeZone: timeZone) }
         let end = until.flatMap { Self.date($0, timeZone: timeZone) }
         guard !session.id.isEmpty, !session.id.hasPrefix("-"),
               since == nil || start != nil, until == nil || end != nil,
               start == nil || end == nil || start! < end! else { throw WeChatReadError.invalidRange }
+        let watermark = afterTimestamp.flatMap { $0 > 0 && $0.isFinite ? $0 : nil }
         guard !FileManager.default.fileExists(atPath: destination.path) else { throw WeChatReadError.commandFailed }
         let temporary = destination.deletingLastPathComponent().appendingPathComponent(".digup-export-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -869,6 +964,7 @@ public struct WeChatReader: Sendable {
         try FileManager.default.createDirectory(at: media, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         let filesDir = temporary.appendingPathComponent("files")
         try FileManager.default.createDirectory(at: filesDir, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        var avatars = WeChatExportAvatarStore(root: temporary)
         func file(_ name: String) throws -> FileHandle {
             let url = temporary.appendingPathComponent(name)
             guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw WeChatReadError.commandFailed }
@@ -906,11 +1002,12 @@ public struct WeChatReader: Sendable {
             return items
         }
         appendText(session.name + "\n\n")
-        var offset = 0, count = 0, imageCount = 0, unavailable = 0, seen = Set<String>()
+        var offset = 0, count = 0, imageCount = 0, unavailable = 0, ocrCount = 0, seen = Set<String>()
         var statsBuilder = WeChatStatsBuilder(timeZone: timeZone)
         var corpusRecords: [[String: Any]] = []
         var dayOrder: [String] = []
         var lastDay: String?
+        var newestTimestamp: Double?
         var first: Data?
         while true {
             try Task<Never, Never>.checkCancellation()
@@ -925,6 +1022,7 @@ public struct WeChatReader: Sendable {
                 guard seen.insert("\(id)@\(timestamp)").inserted else { throw WeChatReadError.changedSource }
                 if let start, timestamp < start.timeIntervalSince1970 { continue }
                 if let end, timestamp >= end.timeIntervalSince1970 { continue }
+                if let watermark, timestamp <= watermark { continue }
                 let type = row["type"] as? String ?? "unknown"
                 let senderRaw = row["sender"] as? String ?? ""
                 let sender = displayName?(senderRaw) ?? senderRaw
@@ -932,6 +1030,7 @@ public struct WeChatReader: Sendable {
                 var rendered = WeChatExportFormatting.parts(type: type, content: content)
                 var imagePath: String?
                 var filePath: String?
+                var ocrText: String?
                 if rendered.kind == .image {
                     do {
                         let raw = try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys])
@@ -940,9 +1039,23 @@ public struct WeChatReader: Sendable {
                         try Task<Never, Never>.checkCancellation()
                         let path = try Self.writeExportImage(data, index: count + 1, into: temporary)
                         imagePath = path; imageCount += 1
-                        rendered = WeChatExportFormatting.Parts(
-                            kind: .image, plain: "[图片 / Image: \(path)]",
-                            html: "<p class=\"media\">[图片 / Image]</p>")
+                        if recognizeImageText {
+                            let text = WeChatImageOCR.text(from: data)
+                            if !text.isEmpty {
+                                ocrText = text
+                                ocrCount += 1
+                            }
+                        }
+                        if let ocrText {
+                            rendered = WeChatExportFormatting.Parts(
+                                kind: .image,
+                                plain: "[图片 / Image: \(path)]\n[OCR]\n\(ocrText)",
+                                html: "<p class=\"media\">[图片 / Image]</p><pre class=\"ocr\">\(escape(ocrText))</pre>")
+                        } else {
+                            rendered = WeChatExportFormatting.Parts(
+                                kind: .image, plain: "[图片 / Image: \(path)]",
+                                html: "<p class=\"media\">[图片 / Image]</p>")
+                        }
                     } catch is CancellationError { throw CancellationError() }
                     catch {
                         try Task<Never, Never>.checkCancellation()
@@ -998,21 +1111,36 @@ public struct WeChatReader: Sendable {
                 else if WeChatHTMLReport.isSelf(senderRaw: senderRaw, selfUsername: selfUsername,
                                                selfAliases: selfAliases) { role = "me" }
                 else { role = "them" }
-                appendBody("<article id=\"message-\(count + 1)\" class=\"\(role)\"><header>" + escape(heading) + "</header>")
+                let avatarKey: String = {
+                    let raw = senderRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !raw.isEmpty { return raw }
+                    if role == "me", let selfUsername, !selfUsername.isEmpty { return selfUsername }
+                    return session.id
+                }()
+                let avatarRemote = avatarURL?(avatarKey)
+                    ?? (avatarKey == session.id ? avatarURL?(session.id) : nil)
+                let avatarPath = avatars.relativePath(for: avatarRemote, cacheKey: avatarKey)
+                let avatarHTML = WeChatExportAvatarStore.htmlTag(path: avatarPath, alt: sender)
+                appendBody("<article id=\"message-\(count + 1)\" class=\"\(role)\"><div class=\"row\">")
+                appendBody(avatarHTML)
+                appendBody("<div class=\"stack\"><header>" + escape(heading) + "</header>")
                 appendBody("<div class=\"bubble\">")
                 appendBody(rendered.html)
                 if let imagePath {
-                    appendBody("<a href=\"\(imagePath)\"><img loading=\"lazy\" src=\"\(imagePath)\" alt=\"图片 / Image\"></a>")
+                    appendBody("<a href=\"\(imagePath)\"><img loading=\"lazy\" src=\"\(imagePath)\" alt=\"图片\"></a>")
                 }
-                appendBody("</div></article>\n")
+                appendBody("</div></div></div></article>\n")
                 var record = WeChatCorpusExport.messageRecord(
                     index: count + 1, timestamp: timestamp, datetime: when,
                     sender: sender, senderRaw: senderRaw, type: type,
                     kind: rendered.kind, plain: rendered.plain,
                     content: content, imagePath: imagePath)
                 if let filePath { record["file"] = filePath }
+                if let ocrText { record["ocr"] = ocrText }
+                if let avatarPath { record["avatar"] = avatarPath }
                 corpusRecords.append(record)
                 appendJSONL(try WeChatCorpusExport.jsonlLine(from: record, sessionName: session.name))
+                if newestTimestamp == nil || timestamp > newestTimestamp! { newestTimestamp = timestamp }
                 count += 1
             }
             try flushBuffers()
@@ -1043,21 +1171,25 @@ public struct WeChatReader: Sendable {
             tocLinks += "<a href=\"#day-\(day)\">\(escape(day))</a>"
         }
         let toc = dayOrder.isEmpty ? "" : """
-        <details class="toc" open><summary>按日跳转 / Jump by day（\(dayOrder.count)）</summary>\
+        <details class="toc"><summary>日期（\(dayOrder.count)）</summary>\
         <div class="days">\(tocLinks)</div></details>
         """
         var indexHTML = Data()
         indexHTML.append(contentsOf: """
         <!doctype html><html lang="zh-Hans"><meta charset="utf-8"><meta name="viewport" content="width=device-width">\
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline';">\
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">\
         <title>\(escape(session.name))</title><style>\(WeChatHTMLReport.style)</style>\
         <div class="top"><h1>\(escape(session.name))</h1>\
-        <div class="nav"><a href="stats.html">区间概览</a><a href="messages.json">messages.json</a>\
-        <a href="corpus.jsonl">corpus.jsonl</a><span>\(stats.messageCount) 条 · \(stats.activeDays) 天</span></div></div>\
+        <div class="nav"><a href="stats.html">概览</a>\
+        <span>\(stats.messageCount) 条 · \(stats.activeDays) 天\
+        \(ocrCount > 0 ? " · OCR \(ocrCount)" : "")</span></div>\
+        <div class="search"><input id="q" type="search" placeholder="搜索" autocomplete="off">\
+        <span class="hit" id="hits"></span></div></div>\
         <div class="wrap">\(toc)
         """.utf8)
         indexHTML.append(htmlBody)
         indexHTML.append(contentsOf: "</div>".utf8)
+        indexHTML.append(contentsOf: WeChatHTMLReport.searchScript.utf8)
         let indexURL = temporary.appendingPathComponent("index.html")
         try indexHTML.write(to: indexURL, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: indexURL.path)
@@ -1075,7 +1207,9 @@ public struct WeChatReader: Sendable {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: messagesJSON.path)
         // A new directory only: never overwrite an existing export or user folder.
         try FileManager.default.moveItem(at: temporary, to: destination)
-        return WeChatExportResult(messages: count, images: imageCount, unavailableImages: unavailable, stats: stats)
+        return WeChatExportResult(
+            messages: count, images: imageCount, unavailableImages: unavailable,
+            ocrImages: ocrCount, lastTimestamp: newestTimestamp, stats: stats)
     }
 
     /// Prefer original JPEG/PNG bytes; fall back to PNG re-encode only when the container is unfamiliar.

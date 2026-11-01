@@ -567,6 +567,18 @@
 
 "A folder with text, HTML report, linked images and files. Unavailable media are marked." = "A folder with text, HTML report, linked images and files. Unavailable media are marked.";
 
+"Recognize text in images (OCR)" = "Recognize text in images (OCR)";
+
+"Only new messages since last export" = "Only new messages since last export";
+
+"Last export watermark: {0}" = "Last export watermark: {0}";
+
+"No previous export watermark for this chat yet." = "No previous export watermark for this chat yet.";
+
+"OCR uses Apple Vision offline. HTML report includes on-page search." = "OCR uses Apple Vision offline. HTML report includes on-page search.";
+
+"Exported {0} messages · {1} active days · {2} images · {3} unavailable · OCR {4}" = "Exported {0} messages · {1} active days · {2} images · {3} unavailable · OCR {4}";
+
 "This chat can’t be opened (WeChat placeholder or missing contact). Pick another conversation." = "This chat can’t be opened (WeChat placeholder or missing contact). Pick another conversation.";
 
 "Start Indexing" = "Start Indexing";
@@ -694,6 +706,14 @@
 "Deliver to Claude" = "Deliver to Claude";
 "Deliver to Codex" = "Deliver to Codex";
 "Export Markdown / Obsidian" = "Export Markdown / Obsidian";
+
+"Export Markdown" = "Export Markdown";
+
+"Export to Obsidian" = "Export to Obsidian";
+
+"Obsidian note exported" = "Obsidian note exported";
+
+"Choose Obsidian vault" = "Choose Obsidian vault";
 "Clear" = "Clear";
 "Collection cleared" = "Collection cleared";
 "Collection is empty" = "Collection is empty";

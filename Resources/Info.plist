@@ -26,9 +26,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.7.0-plus.1</string>
+	<string>0.7.0-plus.2</string>
 	<key>CFBundleVersion</key>
-	<string>14</string>
+	<string>15</string>
 	<key>DUAppGroupIdentifier</key>
 	<string>3396ALL92C.group.com.yuezheng.digupplus.shared</string>
 	<key>LSApplicationCategoryType</key>

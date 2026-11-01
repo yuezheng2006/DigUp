@@ -567,6 +567,18 @@
 
 "A folder with text, HTML report, linked images and files. Unavailable media are marked." = "导出文件夹含文本、HTML 报告、图片与文件；不可用的媒体会标记。";
 
+"Recognize text in images (OCR)" = "识别图片文字（OCR）";
+
+"Only new messages since last export" = "仅导出上次之后的新消息";
+
+"Last export watermark: {0}" = "上次导出水位：{0}";
+
+"No previous export watermark for this chat yet." = "此会话还没有导出水位。";
+
+"OCR uses Apple Vision offline. HTML report includes on-page search." = "OCR 使用本机 Apple Vision，离线完成；HTML 报告支持页内搜索。";
+
+"Exported {0} messages · {1} active days · {2} images · {3} unavailable · OCR {4}" = "已导出 {0} 条消息 · {1} 个活跃日 · {2} 张图片 · {3} 张不可用 · OCR {4}";
+
 "This chat can’t be opened (WeChat placeholder or missing contact). Pick another conversation." = "打不开这个会话（微信系统占位或联系人缺失）。请换一个会话。";
 
 "Media or attachment preview is not available yet." = "此消息已显示文字摘要；图片可点「查看图片」，视频/语音暂不支持应用内播放。";
@@ -696,6 +708,14 @@
 "Deliver to Claude" = "发给 Claude";
 "Deliver to Codex" = "发给 Codex";
 "Export Markdown / Obsidian" = "导出 Markdown / Obsidian";
+
+"Export Markdown" = "导出 Markdown";
+
+"Export to Obsidian" = "导出到 Obsidian";
+
+"Obsidian note exported" = "已导出到 Obsidian";
+
+"Choose Obsidian vault" = "选择 Obsidian 库";
 "Clear" = "清空";
 "Collection cleared" = "已清空暂存";
 "Collection is empty" = "暂存为空";
