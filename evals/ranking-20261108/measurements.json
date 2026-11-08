@@ -1,0 +1,737 @@
+{
+  "label_status": "agent initial labels; not independently human reviewed",
+  "corpus_source_commit": "c82fd86",
+  "corpus_sha256": {
+    "SKILL.zh-CN.md": "9abcddae6bbd31d568ebcefc3e24323779e6e83c50a767ca4d277ceeb44bd59e",
+    "extension-strategy.md": "c7603f8ed72ff417e001597db84b0af85f9d6e9d14a62c699785f17ece28f98c",
+    "search-evaluation.zh-CN.md": "3606d71fd86d56d832c58dc9e9b21018d130c27f41976a98cc0dc1a10b68e399",
+    "wechat-extension.md": "0ea08ff9cc3f724df8bd06be71fd85cb5d4c288d7b5e60ec69ab5af8181c0479"
+  },
+  "experiments": {
+    "default": {
+      "metadata": {
+        "commit": "c82fd86 source; existing helper build SHA unverified",
+        "model": "embeddinggemma-2@bfcd298 Q8_0",
+        "corpus_revision": "c82fd86 four unchanged source documents",
+        "measured_at": "2026-11-08T05:05:21.032064+00:00",
+        "timing": "CLI wall time including process/model startup; serial queries; OS caches may be warm",
+        "helper_sha256": "60dcf460547be82cb7caab700d86ef08741ab6d54d47849c48bf3b20566b88e8",
+        "limit": 50,
+        "ranking_parameters": {}
+      },
+      "runs": [
+        {
+          "id": "q1",
+          "query": "召回率怎么算",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 575.2758330199867
+        },
+        {
+          "id": "q2",
+          "query": "没有完整标注能计算召回率吗",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 506.36295799631625
+        },
+        {
+          "id": "q3",
+          "query": "为什么不能把排序分叫置信度",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 499.39549999544397
+        },
+        {
+          "id": "q4",
+          "query": "关掉窗口后还会更新索引吗",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 497.7240409934893
+        },
+        {
+          "id": "q5",
+          "query": "我要找以前看过的视频下载工具项目",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 468.126708001364
+        },
+        {
+          "id": "q6",
+          "query": "怎么让插件减少对上游的修改",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 510.03224996384233
+        },
+        {
+          "id": "q7",
+          "query": "朋友圈广告过滤会隐藏自己的动态吗",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 484.4943750067614
+        },
+        {
+          "id": "q8",
+          "query": "朋友圈显示的是原图还是缩略图",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 499.73683402640745
+        },
+        {
+          "id": "q9",
+          "query": "Precision@10",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 489.9571249843575
+        },
+        {
+          "id": "q10",
+          "query": "宿主契约",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 497.0021669869311
+        },
+        {
+          "id": "q11",
+          "query": "ISAAC64",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 493.09904099209234
+        },
+        {
+          "id": "q12",
+          "query": "doctor",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 483.363792009186
+        },
+        {
+          "id": "q13",
+          "query": "番茄炒蛋怎么做",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 505.307833023835
+        },
+        {
+          "id": "q14",
+          "query": "明天北京天气",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 512.154083000496
+        },
+        {
+          "id": "q15",
+          "query": "怎样申请美国签证",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 466.14516695262864
+        },
+        {
+          "id": "q16",
+          "query": "新能源汽车保养价格",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 504.63004101766273
+        }
+      ]
+    },
+    "gate1": {
+      "metadata": {
+        "commit": "c82fd86 source; existing helper build SHA unverified",
+        "model": "embeddinggemma-2@bfcd298 Q8_0",
+        "corpus_revision": "c82fd86 four unchanged source documents",
+        "measured_at": "2026-11-08T05:05:30.140706+00:00",
+        "timing": "CLI wall time including process/model startup; serial queries; OS caches may be warm",
+        "helper_sha256": "60dcf460547be82cb7caab700d86ef08741ab6d54d47849c48bf3b20566b88e8",
+        "limit": 50,
+        "ranking_parameters": {
+          "zgate": 1.0
+        }
+      },
+      "runs": [
+        {
+          "id": "q1",
+          "query": "召回率怎么算",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 472.4858329864219
+        },
+        {
+          "id": "q2",
+          "query": "没有完整标注能计算召回率吗",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 508.4924169932492
+        },
+        {
+          "id": "q3",
+          "query": "为什么不能把排序分叫置信度",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 519.6047499775887
+        },
+        {
+          "id": "q4",
+          "query": "关掉窗口后还会更新索引吗",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 556.4406249905005
+        },
+        {
+          "id": "q5",
+          "query": "我要找以前看过的视频下载工具项目",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 515.7507500262
+        },
+        {
+          "id": "q6",
+          "query": "怎么让插件减少对上游的修改",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 531.1951669864357
+        },
+        {
+          "id": "q7",
+          "query": "朋友圈广告过滤会隐藏自己的动态吗",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 553.2392080058344
+        },
+        {
+          "id": "q8",
+          "query": "朋友圈显示的是原图还是缩略图",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 534.2802089871839
+        },
+        {
+          "id": "q9",
+          "query": "Precision@10",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 529.0445830323733
+        },
+        {
+          "id": "q10",
+          "query": "宿主契约",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md",
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 540.8244999707676
+        },
+        {
+          "id": "q11",
+          "query": "ISAAC64",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 767.1903750160709
+        },
+        {
+          "id": "q12",
+          "query": "doctor",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 563.2507920381613
+        },
+        {
+          "id": "q13",
+          "query": "番茄炒蛋怎么做",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 590.040749986656
+        },
+        {
+          "id": "q14",
+          "query": "明天北京天气",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 609.4938330352306
+        },
+        {
+          "id": "q15",
+          "query": "怎样申请美国签证",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 554.306624981109
+        },
+        {
+          "id": "q16",
+          "query": "新能源汽车保养价格",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 675.9000419988297
+        }
+      ]
+    },
+    "gate1-words4": {
+      "metadata": {
+        "commit": "c82fd86 source; existing helper build SHA unverified",
+        "model": "embeddinggemma-2@bfcd298 Q8_0",
+        "corpus_revision": "c82fd86 four unchanged source documents",
+        "measured_at": "2026-11-08T05:05:40.315400+00:00",
+        "timing": "CLI wall time including process/model startup; serial queries; OS caches may be warm",
+        "helper_sha256": "60dcf460547be82cb7caab700d86ef08741ab6d54d47849c48bf3b20566b88e8",
+        "limit": 50,
+        "ranking_parameters": {
+          "zgate": 1.0,
+          "word-weight": 4.0
+        }
+      },
+      "runs": [
+        {
+          "id": "q1",
+          "query": "召回率怎么算",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 655.2507500164211
+        },
+        {
+          "id": "q2",
+          "query": "没有完整标注能计算召回率吗",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 654.9860410159454
+        },
+        {
+          "id": "q3",
+          "query": "为什么不能把排序分叫置信度",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 560.3204159997404
+        },
+        {
+          "id": "q4",
+          "query": "关掉窗口后还会更新索引吗",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 583.9806669973768
+        },
+        {
+          "id": "q5",
+          "query": "我要找以前看过的视频下载工具项目",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 646.6504169511609
+        },
+        {
+          "id": "q6",
+          "query": "怎么让插件减少对上游的修改",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 684.6953749773093
+        },
+        {
+          "id": "q7",
+          "query": "朋友圈广告过滤会隐藏自己的动态吗",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 817.6227500080131
+        },
+        {
+          "id": "q8",
+          "query": "朋友圈显示的是原图还是缩略图",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 671.4941250393167
+        },
+        {
+          "id": "q9",
+          "query": "Precision@10",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 703.6782919894904
+        },
+        {
+          "id": "q10",
+          "query": "宿主契约",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md",
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 541.0319999791682
+        },
+        {
+          "id": "q11",
+          "query": "ISAAC64",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 547.109667037148
+        },
+        {
+          "id": "q12",
+          "query": "doctor",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 564.3471660441719
+        },
+        {
+          "id": "q13",
+          "query": "番茄炒蛋怎么做",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 528.364458004944
+        },
+        {
+          "id": "q14",
+          "query": "明天北京天气",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 579.9646250088699
+        },
+        {
+          "id": "q15",
+          "query": "怎样申请美国签证",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 677.488750021439
+        },
+        {
+          "id": "q16",
+          "query": "新能源汽车保养价格",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 663.739749987144
+        }
+      ]
+    },
+    "gate1-words0": {
+      "metadata": {
+        "commit": "c82fd86 source; existing helper build SHA unverified",
+        "model": "embeddinggemma-2@bfcd298 Q8_0",
+        "corpus_revision": "c82fd86 four unchanged source documents",
+        "measured_at": "2026-11-08T05:05:50.421745+00:00",
+        "timing": "CLI wall time including process/model startup; serial queries; OS caches may be warm",
+        "helper_sha256": "60dcf460547be82cb7caab700d86ef08741ab6d54d47849c48bf3b20566b88e8",
+        "limit": 50,
+        "ranking_parameters": {
+          "zgate": 1.0,
+          "word-weight": 0.0
+        }
+      },
+      "runs": [
+        {
+          "id": "q1",
+          "query": "召回率怎么算",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 711.6454169736244
+        },
+        {
+          "id": "q2",
+          "query": "没有完整标注能计算召回率吗",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 596.7734589939937
+        },
+        {
+          "id": "q3",
+          "query": "为什么不能把排序分叫置信度",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 693.8442920218222
+        },
+        {
+          "id": "q4",
+          "query": "关掉窗口后还会更新索引吗",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 663.2089579943568
+        },
+        {
+          "id": "q5",
+          "query": "我要找以前看过的视频下载工具项目",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 640.6804589787498
+        },
+        {
+          "id": "q6",
+          "query": "怎么让插件减少对上游的修改",
+          "filters": {},
+          "result_ids": [
+            "extension-strategy.md"
+          ],
+          "latency_ms": 592.6140829687938
+        },
+        {
+          "id": "q7",
+          "query": "朋友圈广告过滤会隐藏自己的动态吗",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 581.9056250038557
+        },
+        {
+          "id": "q8",
+          "query": "朋友圈显示的是原图还是缩略图",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 566.8076659785584
+        },
+        {
+          "id": "q9",
+          "query": "Precision@10",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 572.2110829665326
+        },
+        {
+          "id": "q10",
+          "query": "宿主契约",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md",
+            "extension-strategy.md"
+          ],
+          "latency_ms": 662.137083010748
+        },
+        {
+          "id": "q11",
+          "query": "ISAAC64",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 601.830208033789
+        },
+        {
+          "id": "q12",
+          "query": "doctor",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 619.8439999716356
+        },
+        {
+          "id": "q13",
+          "query": "番茄炒蛋怎么做",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 559.4910840154625
+        },
+        {
+          "id": "q14",
+          "query": "明天北京天气",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 680.1867919857614
+        },
+        {
+          "id": "q15",
+          "query": "怎样申请美国签证",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 616.2087920238264
+        },
+        {
+          "id": "q16",
+          "query": "新能源汽车保养价格",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 634.7748329862952
+        }
+      ]
+    },
+    "negative-default": {
+      "metadata": {
+        "commit": "c82fd86 source; helper build SHA unverified",
+        "model": "embeddinggemma-2@bfcd298 Q8_0",
+        "corpus_revision": "c82fd86 four documents",
+        "measured_at": "2026-11-08T05:05:55.406033+00:00",
+        "timing": "CLI wall time including process/model startup; serial queries; OS caches may be warm",
+        "helper_sha256": "60dcf460547be82cb7caab700d86ef08741ab6d54d47849c48bf3b20566b88e8",
+        "limit": 50,
+        "ranking_parameters": {}
+      },
+      "runs": [
+        {
+          "id": "n0",
+          "query": "微信支付退款几天到账",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 696.5648750192486
+        },
+        {
+          "id": "n1",
+          "query": "微信群发红包金额上限是多少",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 593.0635000113398
+        },
+        {
+          "id": "n2",
+          "query": "朋友圈广告投放报价是多少",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 541.5039170184173
+        },
+        {
+          "id": "n3",
+          "query": "视频下载网站会员价格是多少",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 590.4130829731002
+        },
+        {
+          "id": "n4",
+          "query": "北京地铁末班车几点",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 607.3426670045592
+        },
+        {
+          "id": "n5",
+          "query": "牛顿出生日期是哪天",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 606.7787499632686
+        }
+      ]
+    },
+    "negative-gate1": {
+      "metadata": {
+        "commit": "c82fd86 source; helper build SHA unverified",
+        "model": "embeddinggemma-2@bfcd298 Q8_0",
+        "corpus_revision": "c82fd86 four documents",
+        "measured_at": "2026-11-08T05:05:59.260582+00:00",
+        "timing": "CLI wall time including process/model startup; serial queries; OS caches may be warm",
+        "helper_sha256": "60dcf460547be82cb7caab700d86ef08741ab6d54d47849c48bf3b20566b88e8",
+        "limit": 50,
+        "ranking_parameters": {
+          "zgate": 1.0
+        }
+      },
+      "runs": [
+        {
+          "id": "n0",
+          "query": "微信支付退款几天到账",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 632.0280829677358
+        },
+        {
+          "id": "n1",
+          "query": "微信群发红包金额上限是多少",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 610.4196659871377
+        },
+        {
+          "id": "n2",
+          "query": "朋友圈广告投放报价是多少",
+          "filters": {},
+          "result_ids": [
+            "wechat-extension.md"
+          ],
+          "latency_ms": 667.7731670206413
+        },
+        {
+          "id": "n3",
+          "query": "视频下载网站会员价格是多少",
+          "filters": {},
+          "result_ids": [
+            "SKILL.zh-CN.md"
+          ],
+          "latency_ms": 597.0420420053415
+        },
+        {
+          "id": "n4",
+          "query": "北京地铁末班车几点",
+          "filters": {},
+          "result_ids": [
+            "search-evaluation.zh-CN.md"
+          ],
+          "latency_ms": 577.8133749845438
+        },
+        {
+          "id": "n5",
+          "query": "牛顿出生日期是哪天",
+          "filters": {},
+          "result_ids": [],
+          "latency_ms": 711.5342089673504
+        }
+      ]
+    }
+  }
+}

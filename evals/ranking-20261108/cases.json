@@ -1,0 +1,184 @@
+[
+  {
+    "id": "q1",
+    "query": "召回率怎么算",
+    "relevant_ids": [
+      "search-evaluation.zh-CN.md"
+    ],
+    "relevance_grades": {
+      "search-evaluation.zh-CN.md": 3
+    },
+    "category": "meaning",
+    "exhaustive": true
+  },
+  {
+    "id": "q2",
+    "query": "没有完整标注能计算召回率吗",
+    "relevant_ids": [
+      "search-evaluation.zh-CN.md"
+    ],
+    "relevance_grades": {
+      "search-evaluation.zh-CN.md": 3
+    },
+    "category": "meaning",
+    "exhaustive": true
+  },
+  {
+    "id": "q3",
+    "query": "为什么不能把排序分叫置信度",
+    "relevant_ids": [
+      "SKILL.zh-CN.md"
+    ],
+    "relevance_grades": {
+      "SKILL.zh-CN.md": 3
+    },
+    "category": "meaning",
+    "exhaustive": true
+  },
+  {
+    "id": "q4",
+    "query": "关掉窗口后还会更新索引吗",
+    "relevant_ids": [
+      "extension-strategy.md",
+      "SKILL.zh-CN.md"
+    ],
+    "relevance_grades": {
+      "extension-strategy.md": 3,
+      "SKILL.zh-CN.md": 1
+    },
+    "category": "meaning",
+    "exhaustive": true
+  },
+  {
+    "id": "q5",
+    "query": "我要找以前看过的视频下载工具项目",
+    "relevant_ids": [
+      "SKILL.zh-CN.md"
+    ],
+    "relevance_grades": {
+      "SKILL.zh-CN.md": 3
+    },
+    "category": "meaning",
+    "exhaustive": true
+  },
+  {
+    "id": "q6",
+    "query": "怎么让插件减少对上游的修改",
+    "relevant_ids": [
+      "extension-strategy.md",
+      "wechat-extension.md"
+    ],
+    "relevance_grades": {
+      "extension-strategy.md": 3,
+      "wechat-extension.md": 2
+    },
+    "category": "meaning",
+    "exhaustive": true
+  },
+  {
+    "id": "q7",
+    "query": "朋友圈广告过滤会隐藏自己的动态吗",
+    "relevant_ids": [
+      "wechat-extension.md"
+    ],
+    "relevance_grades": {
+      "wechat-extension.md": 3
+    },
+    "category": "meaning",
+    "exhaustive": true
+  },
+  {
+    "id": "q8",
+    "query": "朋友圈显示的是原图还是缩略图",
+    "relevant_ids": [
+      "wechat-extension.md"
+    ],
+    "relevance_grades": {
+      "wechat-extension.md": 3
+    },
+    "category": "meaning",
+    "exhaustive": true
+  },
+  {
+    "id": "q9",
+    "query": "Precision@10",
+    "relevant_ids": [
+      "search-evaluation.zh-CN.md"
+    ],
+    "relevance_grades": {
+      "search-evaluation.zh-CN.md": 3
+    },
+    "category": "exact",
+    "exhaustive": true
+  },
+  {
+    "id": "q10",
+    "query": "宿主契约",
+    "relevant_ids": [
+      "extension-strategy.md",
+      "wechat-extension.md"
+    ],
+    "relevance_grades": {
+      "extension-strategy.md": 3,
+      "wechat-extension.md": 2
+    },
+    "category": "exact",
+    "exhaustive": true
+  },
+  {
+    "id": "q11",
+    "query": "ISAAC64",
+    "relevant_ids": [
+      "wechat-extension.md"
+    ],
+    "relevance_grades": {
+      "wechat-extension.md": 3
+    },
+    "category": "exact",
+    "exhaustive": true
+  },
+  {
+    "id": "q12",
+    "query": "doctor",
+    "relevant_ids": [
+      "SKILL.zh-CN.md"
+    ],
+    "relevance_grades": {
+      "SKILL.zh-CN.md": 3
+    },
+    "category": "exact",
+    "exhaustive": true
+  },
+  {
+    "id": "q13",
+    "query": "番茄炒蛋怎么做",
+    "relevant_ids": [],
+    "relevance_grades": {},
+    "category": "no-answer",
+    "exhaustive": true
+  },
+  {
+    "id": "q14",
+    "query": "明天北京天气",
+    "relevant_ids": [],
+    "relevance_grades": {},
+    "category": "no-answer",
+    "exhaustive": true
+  },
+  {
+    "id": "q15",
+    "query": "怎样申请美国签证",
+    "relevant_ids": [],
+    "relevance_grades": {},
+    "category": "no-answer",
+    "exhaustive": true
+  },
+  {
+    "id": "q16",
+    "query": "新能源汽车保养价格",
+    "relevant_ids": [],
+    "relevance_grades": {},
+    "category": "no-answer",
+    "exhaustive": true
+  }
+]

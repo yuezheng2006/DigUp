@@ -27,6 +27,11 @@ def evaluate(cases, runs):
             raise ValueError(f'duplicate relevant_ids: {key}')
         if not isinstance(case.get('exhaustive'), bool):
             raise ValueError(f'exhaustive must be boolean: {key}')
+        grades = case.get('relevance_grades', {item: 1 for item in relevant})
+        if not isinstance(grades, dict) or set(grades) != set(relevant) or any(
+            isinstance(g, bool) or not isinstance(g, int) or g not in (1, 2, 3) for g in grades.values()
+        ):
+            raise ValueError(f'relevance_grades must grade every relevant id from 1 to 3: {key}')
         by_id[key] = case
     seen, rows, latencies = set(), [], []
     for run in runs:
@@ -50,11 +55,20 @@ def evaluate(cases, runs):
         latencies.append(latency)
         relevant = set(case['relevant_ids'])
         complete = case['exhaustive']
+        grades = case.get('relevance_grades', {item: 1 for item in relevant})
+        def dcg(values):
+            return sum((2 ** grade - 1) / math.log2(rank + 2) for rank, grade in enumerate(values))
+        ideal = dcg(sorted(grades.values(), reverse=True)[:10])
+        reciprocal = next((1 / (i + 1) for i, hit in enumerate(hits[:10]) if hit in relevant), 0)
         # Unknown relevance must not silently count as irrelevant or inflate recall.
         rows.append({
             'id': key, 'category': case.get('category', 'uncategorized'),
             'precision_at_10': len(relevant.intersection(hits[:10])) / 10 if complete and relevant else None,
             'recall_at_50': len(relevant.intersection(hits[:50])) / len(relevant) if complete and relevant else None,
+            'hit_at_1': int(bool(hits) and hits[0] in relevant) if complete and relevant else None,
+            'mrr_at_10': reciprocal if complete and relevant else None,
+            'ndcg_at_10': dcg([grades.get(hit, 0) for hit in hits[:10]]) / ideal if complete and ideal else None,
+            'returned_precision_at_10': len(relevant.intersection(hits[:10])) / len(hits[:10]) if complete and relevant and hits else (0 if complete and relevant else None),
             'no_answer_false_positive': bool(hits) if complete and not relevant else None,
             'returned': len(hits), 'latency_ms': latency,
         })
@@ -62,7 +76,7 @@ def evaluate(cases, runs):
         raise ValueError(f'missing runs: {sorted(set(by_id) - seen)}')
     def aggregate(items):
         result = {'queries': len(items)}
-        for field in ('precision_at_10', 'recall_at_50', 'no_answer_false_positive'):
+        for field in ('precision_at_10', 'recall_at_50', 'hit_at_1', 'mrr_at_10', 'ndcg_at_10', 'returned_precision_at_10', 'no_answer_false_positive'):
             values = [row[field] for row in items if row[field] is not None]
             result[field] = sum(values) / len(values) if values else None
             result[field + '_queries'] = len(values)

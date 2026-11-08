@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -47,6 +48,8 @@ def main():
     for name in ('commit', 'model', 'corpus-revision'):
         parser.add_argument('--' + name, required=True)
     parser.add_argument('--timeout', type=float, default=120)
+    parser.add_argument('--zgate', type=float)
+    parser.add_argument('--word-weight', type=float)
     args = parser.parse_args()
     try:
         helper, index, corpus = (p.expanduser().resolve() for p in (args.helper, args.index, args.corpus))
@@ -58,6 +61,14 @@ def main():
         if not isinstance(cases, list) or not cases:
             raise ValueError('cases must be a nonempty array')
         commands = [command_for(helper, index, case) for case in cases]
+        parameters = {}
+        for name, value in (('zgate', args.zgate), ('word-weight', args.word_weight)):
+            if value is not None:
+                if not math.isfinite(value) or (name == 'word-weight' and value < 0):
+                    raise ValueError('invalid ranking parameter')
+                parameters[name] = value
+                for command in commands:
+                    command.extend(['--' + name, str(value)])
         if len({case['id'] for case in cases}) != len(cases):
             raise ValueError('duplicate case ids')
         runs, raw = [], []
@@ -73,7 +84,8 @@ def main():
         metadata = dict(commit=args.commit, model=args.model, corpus_revision=args.corpus_revision,
                         measured_at=datetime.now(timezone.utc).isoformat(),
                         timing='CLI wall time including process/model startup; serial queries; OS caches may be warm',
-                        helper_sha256=hashlib.sha256(helper.read_bytes()).hexdigest(), limit=50)
+                        helper_sha256=hashlib.sha256(helper.read_bytes()).hexdigest(), limit=50,
+                        ranking_parameters=parameters)
         # Exclusive creation avoids destroying an earlier measurement. Private permissions cover raw excerpts.
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:

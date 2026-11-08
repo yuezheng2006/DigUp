@@ -26,6 +26,24 @@ class EvaluationTests(unittest.TestCase):
         self.assertIsNone(report['recall_at_50'])
         self.assertIsNone(report['precision_at_10'])
         self.assertEqual(report['unjudged_queries'], 1)
+        self.assertIsNone(report['ndcg_at_10'])
+
+    def test_ranking_prefers_strong_evidence_first(self):
+        case = self.case() | {'relevance_grades': {'a': 3, 'b': 1}}
+        good = module.evaluate([case], [self.run_row(['a', 'b'])])['summary']
+        bad = module.evaluate([case], [self.run_row(['b', 'a'])])['summary']
+        self.assertEqual(good['recall_at_50'], bad['recall_at_50'])
+        self.assertEqual(good['ndcg_at_10'], 1)
+        self.assertGreater(good['ndcg_at_10'], bad['ndcg_at_10'])
+        delayed = module.evaluate([case], [self.run_row(['x', 'a'])])['summary']
+        self.assertEqual(delayed['hit_at_1'], 0)
+        self.assertEqual(delayed['mrr_at_10'], .5)
+        self.assertEqual(delayed['returned_precision_at_10'], .5)
+
+    def test_invalid_grades_are_rejected(self):
+        for grades in ({'a': 3}, {'a': 3, 'b': 0}, {'a': True, 'b': 1}):
+            with self.assertRaises(ValueError):
+                module.evaluate([self.case() | {'relevance_grades': grades}], [self.run_row()])
 
     def test_no_answer_is_separate_from_recall(self):
         for hits, expected in [([], 0), (['x'], 1)]:
