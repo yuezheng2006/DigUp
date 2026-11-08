@@ -34,4 +34,18 @@ python3 -m unittest discover -s scripts/tests -p 'test_search_evaluation.py'
 - P95 = 按耗时排序后第 ceil(0.95 × N) 个值（nearest-rank）。包括全部查询；样本少时只作观察，不作为稳定性能结论。
 - 未完整标注的查询不计算 precision/recall/无答案指标，报告 null 和未标注数量；不能把 null 写成 0 或 100%。总体是查询级宏平均，同时给出每项分母。
 
-评分器只能检查输入一致性，不能证明标签正确、结果来自真实运行或来源授权。验收仍需保留本地原始输出、语料快照及标注记录。当前尚未交付生产查询的自动采集适配器，输入需从真实运行导出整理；未来应复用应用/CLI，而非实现另一套搜索。
+评分器只能检查输入一致性，不能证明标签正确、结果来自真实运行或来源授权。验收仍需保留本地原始输出、语料快照及标注记录。
+
+## 真实 CLI 采集（文件搜索）
+
+`scripts/collect-search.py` 复用现有 helper，不另建搜索算法。必须显式指定已存在的索引和语料目录，逐条请求 50 个结果，记录原始结果、stderr、模型/语料版本和 helper SHA256；耗时包含进程及模型启动，不可与常驻服务的纯查询耗时混比。
+
+```sh
+python3 scripts/collect-search.py --helper /path/to/digup --index /private/index \
+  --corpus /private/corpus --cases /private/cases.json --output /private/runs.json \
+  --commit SOURCE_SHA --model MODEL_VERSION --corpus-revision CORPUS_VERSION
+```
+
+结果 ID 是相对于 corpus 的文件路径，人工标注需用同一口径。范围外结果、重复路径、非零退出和超时均报错，不能丢弃它们后继续算高分。当前只支持 `kind` 过滤；微信会话及时间过滤明确拒绝，不会假装执行。输入 metadata 由操作者填写，helper 的真实构建提交未知时必须注明，不能只用当前 Git HEAD 代替。
+
+输出以权限 0600 排他创建，不覆盖之前的记录，包含原始片段，请保存在私有目录。失败运行不生成“成功评测”。微信采集、消息级身份与范围校验仍待接入。
