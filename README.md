@@ -1,3 +1,5 @@
+> **DigUp Plus fork documentation / 增强版使用文档：** [CLI 命令指南](docs/CLI.zh-CN.md) · [Agent Skill 安装与使用](docs/SKILL.zh-CN.md)。这些文档对应增强版安装包；下方下载链接指向上游发行版，不保证包含微信与 Skill 能力。增强版源码与预览包未在本页公开发布。
+
 <p align="center"><img src="docs/logo.png" width="96" alt=""></p>
 
 <h1 align="center">DigUp</h1>
